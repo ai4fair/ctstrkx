@@ -1,9 +1,9 @@
-name: exatrkx-hsf
+name: exatrkx-cpu
 
 channels:
-    - defaults
     - pytorch
     - pyg
+    - defaults
     - conda-forge
     
 dependencies:
