@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# TODO: eval/ should read this file here instead of tracks_from_gnn.py in eval/
+# TODO: Refined version of `eval/trkx_from_gnn.py` script meant to be called from `src/ccl`.
 
 """Modified version of 'tracks_from_gnn.py' (runs after 'eval_gnn_tf.py') script from the
 exatrkx-iml2020. The code breakdown of the script is given in 'stt5_trkx.ipynb' notebook."""
@@ -20,12 +20,12 @@ from sklearn.cluster import DBSCAN
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def tracks_from_gnn(hit_id, score, senders, receivers,
-                    edge_score_cut=0., epsilon=0.25, min_samples=2,
-                    **kwargs):
+
+def tracks_from_cc (hit_id, score, senders, receivers, edge_score_cut=0.,
+                    epsilon=0.25, min_samples=2, **kwargs):
     
-    """Use DBSCAN to build tracks after GNN stage. Important variables are
-    edge pair (sender, receiver) and edge score plus other variables."""
+    """Use CC/DBSCAN to build tracks after GNN stage. Important variables 
+    are edge pair (sender, receiver) and edge_score plus other variables."""
 
     n_nodes = hit_id.shape[0]
     if edge_score_cut > 0:
@@ -67,6 +67,7 @@ def tracks_from_gnn(hit_id, score, senders, receivers,
     
     tracks = pd.DataFrame.from_dict(
         {"hit_id": new_hit_id, "track_id": track_labels.track_id})
+    
     return tracks
 
 
@@ -85,7 +86,7 @@ def process(filename, output_dir, score_name, **kwargs):
     hit_id = gnn_data.hid
     
     # predicted tracks from the GNN stage
-    predicted_tracks = tracks_from_gnn(hit_id, score, senders, receivers, **kwargs)
+    predicted_tracks = tracks_from_cc (hit_id, score, senders, receivers, **kwargs)
  
     # save reconstructed tracks into a file
     # PyTorch convention is to save tensors using .pt file extension
@@ -93,8 +94,7 @@ def process(filename, output_dir, score_name, **kwargs):
     # torch.save(predicted_tracks, os.path.join(output_dir, "{}.pt".format(evtid)))
     torch.save(predicted_tracks, os.path.join(output_dir, "{}".format(evtid)))
     
-
-if __name__ == "__main__":
+def main():
     import argparse
     parser = argparse.ArgumentParser(description="Build Tracks after GNN Evaluation (GNN Test Step).")
     add_arg = parser.add_argument
@@ -135,3 +135,8 @@ if __name__ == "__main__":
     with Pool(args.num_workers) as p:
         process_fnc = partial(process, **vars(args))
         p.map(process_fnc, all_files[:max_evts])
+
+
+if __name__ == "__main__":
+    main()
+    

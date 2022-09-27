@@ -5,6 +5,9 @@ This directory contains functions as suppliment to the STTTrkX Pipeline. Intende
 
 It includes functionality such as
 
+- `cc/` - The connected-components method for track building
+- `wrangler` - A path finding algorithm for track building
+
 - `drawing.py` - Drawing utilities for events.
 - `event.py` - Composing a full 'event' from 'hits', 'tubes', 'particles', 'truth' CSV files.
 
