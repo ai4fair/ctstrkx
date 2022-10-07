@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-"""STT Dataset (equivalent to TrackML Dataset)"""
+"""Everything related to accessing and plotting of an event (from CSVs)"""
 
 import os
 import numpy as np
 import pandas as pd
+from typing import Any
 import matplotlib.pyplot as plt
 import trackml.dataset
 
@@ -146,7 +147,7 @@ class Event(object):
         # add derived quantities to 'hits'
         hits = hits.assign(r=r, phi=phi, eta=eta, r3=r3, absZ=absz, tpt=tpt)
         self._event = hits
-
+        
     def reconstructable_pids(self, min_hits=4):
         """Find reconstructable particles with min_hits > 4"""
         truth_particles = self.particles.merge(self.truth, on='particle_id', how='left')

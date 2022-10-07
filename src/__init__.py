@@ -24,7 +24,7 @@ from .wrangler.wrangler import get_tracks
 from .reader import SttCSVReader, Draw_Reader_Event
 
 # Event Class 
-from .event import Compose_Event, Draw_Compose_Event
+from .event import Event, Compose_Event, Draw_Compose_Event
 
 
 

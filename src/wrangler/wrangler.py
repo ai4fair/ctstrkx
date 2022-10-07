@@ -14,7 +14,13 @@ def find_next_hits(G, pp, used_hits, th=0.1, th_re=0.8, feature_name='solution')
     if len(nbrs) < 1:
         return None
 
-    weights = [G.edges[(pp, i)][feature_name][0] for i in nbrs]
+    # weights = [G.edges[(pp, i)][feature_name][0] for i in nbrs]
+    
+    # FIXME (done): In the DiGraph from PyD::to_networkx(PyG::Data,...), each
+    # edge has a score and truth (y_pid), which is interpretted as the
+    # weight of an edge. From this DiGraph structure one can find it as:
+     
+    weights = [G.edges[(pp, i)][feature_name] for i in nbrs]
 
     if max(weights) < th:
         return None
