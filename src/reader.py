@@ -151,6 +151,8 @@ class SttCSVReader(object):
 def Draw_Reader_Event(data=None, figsize=(10, 10), save_fig=False):
     """Draw a single event produced by SttCSVReader class."""
     
+    plt.close('all')
+    
     # OOP Method #1
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=figsize)
     

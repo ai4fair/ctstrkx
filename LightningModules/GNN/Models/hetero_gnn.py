@@ -6,8 +6,9 @@ import torch
 from torch_scatter import scatter_add, scatter_mean, scatter_max
 from torch.utils.checkpoint import checkpoint
 
+from ..utils.utils_v2 import make_mlp
 from ..hetero_gnn_base import LargeGNNBase
-from ..utils import make_mlp
+
 
 from .submodels.edge_decoders import HomoDecoder, HeteroDecoder
 from .submodels.convolutions import HomoConv, HeteroConv
