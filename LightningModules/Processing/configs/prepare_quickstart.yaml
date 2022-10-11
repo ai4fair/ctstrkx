@@ -6,8 +6,11 @@ n_files: 10000
 n_workers: 8
 n_tasks: 1
 overwrite: True
+min_pt: 0                   # 0: no filter, 0.05: remove lower than 50 MeV
 
-noise: True
+chunksize: 1
+
+noise: False
 skewed: False
 layerwise: True             # True Edge List
 modulewise: True            # True Edge List

@@ -8,8 +8,6 @@ The module contains useful functions for handling the data at the event level.
 More fine-grained utilities are reserved for `detector_utils` and `cell_utils`.
 """
 
-# TODO: Pull module IDs out into a csv file for readability
-
 import os
 import logging
 import itertools
@@ -22,6 +20,7 @@ import trackml.dataset
 import torch
 from torch_geometric.data import Data
 
+from .graph_utils import get_input_edges, graph_intersection
 # Device
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -138,175 +137,67 @@ def get_modulewise_edges(hits):
     return true_edges
 
 
-# ADAK 1: Processing to GNN
-def select_edges(hits1, hits2, filtering=True):
-    """Select edges using a particular phi range or sectors. Currently, I am selecting edges 
-    only in the neighboring sectors i.e. hit1 is paired with hit2 in immediate sectors only."""
+def select_hits(event_prefix=None, skewed=False, noise=False, min_pt=None):
+    """Hit selection, merge info into a single dataframe"""
     
-    # Start with all possible pairs of hits, sector_id is for sectorwise selection
-    keys = ['event_id', 'r', 'phi', 'isochrone', 'sector_id']
-    hit_pairs = hits1[keys].reset_index().merge(hits2[keys].reset_index(), on='event_id', suffixes=('_1', '_2'))
+    hits, tubes, particles, truth = trackml.dataset.load_event(event_prefix)
     
-    if filtering:
-        dSector = (hit_pairs['sector_id_1'] - hit_pairs['sector_id_2'])
-        sector_mask = ((dSector.abs() < 2) | (dSector.abs() == 5))
-        edges = hit_pairs[['index_1', 'index_2']][sector_mask]
-    else:
-        edges = hit_pairs[['index_1', 'index_2']]
-        
-    return edges
-
-
-# ADAK 2: Processing to GNN
-def construct_edges(hits, layer_pairs, filtering=True):
-    """Construct edges between hit pairs in adjacent layers"""
-
-    # Loop over layer pairs and construct edges
-    layer_groups = hits.groupby('layer')
-    edges = []
-    for (layer1, layer2) in layer_pairs:
-        
-        # Find and join all hit pairs
-        try:
-            hits1 = layer_groups.get_group(layer1)
-            hits2 = layer_groups.get_group(layer2)
-        # If an event has no hits on a layer, we get a KeyError.
-        # In that case we just skip to the next layer pair
-        except KeyError as e:
-            logging.info('skipping empty layer: %s' % e)
-            continue
-        
-        # Construct the edges
-        edges.append(select_edges(hits1, hits2, filtering))
-    
-    # Combine edges from all layer pairs
-    edges = pd.concat(edges)
-    return edges
-
-
-# ADAK 3: Processing to GNN
-def get_input_edges(hits, filtering=True):
-    """Build edge_index list for GNN stage."""
-    n_layers = hits.layer.unique().shape[0]
-    layers = np.arange(n_layers)
-    layer_pairs = np.stack([layers[:-1], layers[1:]], axis=1)
-    edges = construct_edges(hits, layer_pairs, filtering)
-    edge_index = edges.to_numpy().T
-    return edge_index
-
-
-# ADAK 4: Processing to GNN
-def graph_intersection(pred_graph, truth_graph):
-    """Get truth information about edge_index (function is from both Embedding/Filtering)"""
-    
-    array_size = max(pred_graph.max().item(), truth_graph.max().item()) + 1
-    
-    if torch.is_tensor(pred_graph):
-        l1 = pred_graph.cpu().numpy()
-    else:
-        l1 = pred_graph
-        
-    if torch.is_tensor(truth_graph):
-        l2 = truth_graph.cpu().numpy()
-    else:
-        l2 = truth_graph
-        
-    e_1 = sp.sparse.coo_matrix(
-        (np.ones(l1.shape[1]), l1), shape=(array_size, array_size)
-    ).tocsr()
-
-    e_2 = sp.sparse.coo_matrix(
-        (np.ones(l2.shape[1]), l2), shape=(array_size, array_size)
-    ).tocsr()
-    
-    del l1
-    del l2
-    
-    e_intersection = (e_1.multiply(e_2) - ((e_1 - e_2) > 0)).tocoo()
-    
-    del e_1
-    del e_2
-    
-    new_pred_graph = (
-        torch.from_numpy(np.vstack([e_intersection.row, e_intersection.col]))
-        .long()
-        .to(device)
-    )
-    
-    y = torch.from_numpy(e_intersection.data > 0).to(device)
-    
-    del e_intersection
-    
-    return new_pred_graph, y
-
-
-def select_hits(event_file=None, noise=False, skewed=False):
-    """Hit selection method from Exa.TrkX. Build a full event, select hits based on certain criteria."""
-    
-    # load data using event_prefix (e.g. path/to/event0000000001)
-    hits, tubes, particles, truth = trackml.dataset.load_event(event_file)
-    
-    # skip noise hits.
     if noise:
-        # runs if noise=True
         truth = truth.merge(
             particles[["particle_id", "vx", "vy", "vz"]], on="particle_id", how="left"
         )
     else:
-        # runs if noise=False
         truth = truth.merge(
             particles[["particle_id", "vx", "vy", "vz"]], on="particle_id", how="inner"
         )
     
-    # assign pt (from tpx & tpy, why not px & py ???) and add to truth
     truth = truth.assign(pt=np.sqrt(truth.tpx**2 + truth.tpy**2))
     
-    # merge some columns of tubes to the hits, I need isochrone, skewed & sector_id
+    if min_pt:
+        truth = truth[truth.pt > min_pt]
+    
+    
+    # ADAK: Start
+    # Need 'isochrone', 'skewed' & 'sector_id' columns from 'tubes'
     hits = hits.merge(tubes[["hit_id", "isochrone", "skewed", "sector_id"]], on="hit_id")
-
-    # skip skewed tubes
+    
+    # Handle Skewed Layers
     if skewed is False:
-        
-        # filter non-skewed layers (skewed==0 for non-skewed layers & skewed==1 for skewed layers)
+       
+        # filter
         hits = hits.query('skewed==0')
         
-        # rename layer_ids from 0,1,2...,17 & assign a new colmn named "layer"
+        # reassign layer_ids from 0,1,2...,17
         vlids = hits.layer_id.unique()
         n_det_layers = hits.layer_id.unique().shape[0]
         vlid_groups = hits.groupby(['layer_id'])
         hits = pd.concat([vlid_groups.get_group(vlids[i]).assign(layer=i) for i in range(n_det_layers)])
-    
     else:
-        # FIXME: this is conveniet to use layer as a column for both skewed=True or False
-        # second way is to drop layer_id from hits, and rename layer to layer_id.
         hits = hits.rename(columns={"layer_id": "layer"})
-
+    # ADAK: End
+    
+    
     # Calculate derived hits variables
     r = np.sqrt(hits.x**2 + hits.y**2)
     phi = np.arctan2(hits.y, hits.x)
     
-    # Merge `hits` with `truth`, but first add `r` & `phi`
+    # Select the data columns we need
     hits = hits.assign(r=r, phi=phi).merge(truth, on="hit_id")
     
-    # Add `event_id` column to this event.
-    hits = hits.assign(event_id=int(event_file[-10:]))
-
     return hits
     
     
-def build_event(event_file, feature_scale, layerwise=True, modulewise=True,
-                inputedges=False, noise=False, skewed=False):
-    """
-    Get true edge list using the ordering by R' = distance from production vertex of each particle.
-    Return: [X=(r, phi, z), particle_id, layers, layerless_true_edges, layerwise_true_edges, hit_id]
-    """
+def build_event(event_prefix, feature_scale, layerwise=True, modulewise=True,
+                inputedges=False, skewed=False, noise=False, min_pt=None):
+    """True edges using ordering by R'=distance from production vertex of each particle.
+    Return: [X=(r, phi, z), pid, layers, layerwise, modulewise, inputedges, hid, pt]"""
     
-    # Load event using "event_file" prefix.
-    # hits, tubes, particles, truth = trackml.dataset.load_event(event_file)
+    # Load event using "event_prefix"
+    # hits, tubes, particles, truth = trackml.dataset.load_event(event_prefix)
     
     # Select hits, add new/select columns, add event_id
-    hits = select_hits(event_file=event_file, noise=noise, skewed=skewed).assign(
-        event_id=int(event_file[-10:])
+    hits = select_hits(event_prefix, skewed, noise, min_pt).assign(
+        event_id=int(event_prefix[-10:])
     )
     
     # Get list of all layers
@@ -320,7 +211,7 @@ def build_event(event_file, feature_scale, layerwise=True, modulewise=True,
         layerwise_true_edges, hits = get_layerwise_edges(hits)
         logging.info(
             "Layerwise truth graph built for {} with size {}".format(
-                event_file, layerwise_true_edges.shape
+                event_prefix, layerwise_true_edges.shape
             )
         )
     
@@ -329,7 +220,7 @@ def build_event(event_file, feature_scale, layerwise=True, modulewise=True,
         modulewise_true_edges = get_modulewise_edges(hits)
         logging.info(
             "Modulewise truth graph built for {} with size {}".format(
-                event_file, modulewise_true_edges.shape
+                event_prefix, modulewise_true_edges.shape
             )
         )
     
@@ -341,7 +232,7 @@ def build_event(event_file, feature_scale, layerwise=True, modulewise=True,
         layerwise_input_edges = get_input_edges(hits)
         logging.info(
             "Layerwise input graph built for {} with size {}".format(
-                event_file, layerwise_input_edges.shape
+                event_prefix, layerwise_input_edges.shape
             )
         )
 
@@ -373,13 +264,13 @@ def build_event(event_file, feature_scale, layerwise=True, modulewise=True,
     
 def prepare_event(
     event_file,
-    progressbar=None,
     output_dir=None,
     modulewise=True,
     layerwise=True,
     inputedges=True,
-    noise=False,
     skewed=False,
+    noise=False,
+    min_pt=None,
     overwrite=False,
     **kwargs
 ):
@@ -407,13 +298,14 @@ def prepare_event(
                 pt,
                 # weights,
             ) = build_event(
-                event_file,
-                feature_scale,
+                event_prefix=event_file,
+                feature_scale=feature_scale,
                 layerwise=layerwise,
                 modulewise=modulewise,
                 inputedges=inputedges,
+                skewed=skewed,
                 noise=noise,
-                skewed=skewed
+                min_pt=min_pt
             )
             
             # build pytorch_geometric Data module

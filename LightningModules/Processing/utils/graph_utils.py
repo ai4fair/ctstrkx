@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-"""Utilities for Input Graph Construction"""
+"""Utilities for Input Graph Construction during Processing"""
 
+import torch
 import logging
 import scipy as sp
 import numpy as np
 import pandas as pd
-import torch
+
 
 # Device
 device = 'cuda' if torch.cuda.is_available() else 'cpu'

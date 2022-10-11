@@ -6,6 +6,8 @@ n_files: 100000
 n_workers: 64
 n_tasks: 1
 overwrite: False
+min_pt: 0                   # 0: no filter, 0.05: remove lower than 50 MeV
+
 chunksize: 10
 
 noise: True
