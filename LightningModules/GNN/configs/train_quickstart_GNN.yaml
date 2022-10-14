@@ -1,14 +1,16 @@
 # Input/output configuration
 input_dir: ${EXATRKX_DATA}/run_quick/feature_store
-output_dir: ${EXATRKX_DATA}/run_quick/gnn_evaluation
+output_dir: ${EXATRKX_DATA}/run_quick/gnn_processed
 project: GNNStudy
 edge_cut: 0.5
+
+n_workers: 8
 
 # Dataset parameters
 pt_signal_min: 0.
 pt_background_min: 0.
 datatype_names: [[train, val, test]]  # Which directory prefixes to use, assuming at least a train dataset 
-datatype_split: [[8500, 500, 1000]]  # Number of [training, validation, testing] examples
+datatype_split: [[9000, 500, 500]]  # Number of [training, validation, testing] examples
 noise: False
 overwrite: True
 

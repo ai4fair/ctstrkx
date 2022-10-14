@@ -46,9 +46,17 @@ def select_data(events, pt_background_cut, pt_signal_cut, noise):
         for event in events:
 
             edge_mask = ((event.pt[event.edge_index] > pt_background_cut) & (event.pid[event.edge_index] == event.pid[event.edge_index]) & (event.pid[event.edge_index] != 0)).all(0)
+            
+            # Apply Mask on "edge_index, y, weights, y_pid"
             event.edge_index = event.edge_index[:, edge_mask]
-            event.y = event.y[edge_mask]
-
+            
+            # FIXME: ADAK: y isn't present in my data, above line will give 
+            # an error. The solution is to also put it under an if-conditon
+            
+            # event.y = event.y[edge_mask]
+            if "y" in event.__dict__.keys():
+                event.y = event.y[edge_mask]
+            
             if "weights" in event.__dict__.keys():
                 if event.weights.shape[0] == edge_mask.shape[0]:
                     event.weights = event.weights[edge_mask]

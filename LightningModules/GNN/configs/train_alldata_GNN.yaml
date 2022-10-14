@@ -1,6 +1,6 @@
 # Input/output configuration
 input_dir: ${EXATRKX_DATA}/run_all/feature_store
-output_dir: ${EXATRKX_DATA}/run_all/gnn_evaluation
+output_dir: ${EXATRKX_DATA}/run_all/gnn_processed
 project: GNNStudy
 edge_cut: 0.5
 
@@ -28,7 +28,7 @@ warmup: 200
 lr: 0.001
 factor: 0.3
 patience: 10
-regime: [[pid]] #NOTE: [pid] assumes filtering has (not) been performed i.e. variable y_pid (y) exists in Data.
+regime: [[pid]] # NOTE: [pid] assumes filtering has (not) been performed i.e. variable y_pid (y) exists in Data.
 max_epochs: 50
 
 # Post-processing

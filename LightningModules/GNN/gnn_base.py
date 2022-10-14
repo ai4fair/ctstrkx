@@ -21,7 +21,14 @@ class GNNBase(LightningModule):
         """
         # Assign hyperparameters
         self.save_hyperparameters(hparams)
-
+        
+        # Set workers from hparams
+        self.n_workers = (
+            self.hparams["n_workers"]
+            if "n_workers" in self.hparams
+            else len(os.sched_getaffinity(0))
+        )
+        
     def setup(self, stage):
         # Handle any subset of [train, val, test] data split, assuming that ordering
 
@@ -47,17 +54,17 @@ class GNNBase(LightningModule):
         if ("trainset" not in self.__dict__.keys()) or (self.trainset is None):
             self.setup_data()
 
-        return DataLoader(self.trainset, batch_size=1, num_workers=16)
+        return DataLoader(self.trainset, batch_size=1, num_workers=self.n_workers)
 
     def val_dataloader(self):
         if self.valset is not None:
-            return DataLoader(self.valset, batch_size=1, num_workers=16)
+            return DataLoader(self.valset, batch_size=1, num_workers=self.n_workers)
         else:
             return None
 
     def test_dataloader(self):
         if self.testset is not None:
-            return DataLoader(self.testset, batch_size=1, num_workers=16)
+            return DataLoader(self.testset, batch_size=1, num_workers=self.n_workers)
         else:
             return None
 
