@@ -5,8 +5,6 @@ import pytorch_lightning as pl
 from pytorch_lightning import LightningModule
 from datetime import timedelta
 import torch.nn.functional as F
-# FIXME::ADAK: DataLoader is moved from torch_geometric.data to torch_geometric.loader
-# from torch_geometric.data import DataLoader
 from torch_geometric.loader import DataLoader
 from torch.nn import Linear
 import torch
@@ -14,7 +12,6 @@ import torch
 from .utils.gnn_utils import load_dataset
 from sklearn.metrics import roc_auc_score
 
-# FIXME::ADAK: I have removed .bool() from y_pid and y varialbe, it gives an error.
 
 class GNNBase(LightningModule):
     def __init__(self, hparams):
@@ -28,20 +25,18 @@ class GNNBase(LightningModule):
     def setup(self, stage):
         # Handle any subset of [train, val, test] data split, assuming that ordering
 
-        input_dirs = [None, None, None]
-        input_dirs[: len(self.hparams["datatype_names"])] = [
+        input_subdirs = [None, None, None]
+        input_subdirs[: len(self.hparams["datatype_names"])] = [
             os.path.join(self.hparams["input_dir"], datatype)
             for datatype in self.hparams["datatype_names"]
         ]
         self.trainset, self.valset, self.testset = [
             load_dataset(
-                input_dir,
-                self.hparams["datatype_split"][i],
-                self.hparams["pt_background_min"],
-                self.hparams["pt_signal_min"],
-                self.hparams["noise"],
+                input_subdir=input_subdir,
+                num_events=self.hparams["datatype_split"][i],
+                **self.hparams
             )
-            for i, input_dir in enumerate(input_dirs)
+            for i, input_subdir in enumerate(input_subdirs)
         ]
 
     def setup_data(self):
@@ -52,17 +47,17 @@ class GNNBase(LightningModule):
         if ("trainset" not in self.__dict__.keys()) or (self.trainset is None):
             self.setup_data()
 
-        return DataLoader(self.trainset, batch_size=1, num_workers=8)
+        return DataLoader(self.trainset, batch_size=1, num_workers=16)
 
     def val_dataloader(self):
         if self.valset is not None:
-            return DataLoader(self.valset, batch_size=1, num_workers=8)
+            return DataLoader(self.valset, batch_size=1, num_workers=16)
         else:
             return None
 
     def test_dataloader(self):
         if self.testset is not None:
-            return DataLoader(self.testset, batch_size=1, num_workers=8)
+            return DataLoader(self.testset, batch_size=1, num_workers=16)
         else:
             return None
 
@@ -119,10 +114,14 @@ class GNNBase(LightningModule):
         weight = (
             torch.tensor(self.hparams["weight"])
             if ("weight" in self.hparams)
+            # FIXME::ADAK: I have removed .bool()
+            # else torch.tensor((~batch.y_pid.bool()).sum() / batch.y_pid.sum())
             else torch.tensor((~batch.y_pid).sum() / batch.y_pid.sum())
         )
 
         truth = (
+            # FIXME::ADAK: I have removed .bool()
+            # batch.y_pid.bool() if "pid" in self.hparams["regime"] else batch.y.bool()
             batch.y_pid if "pid" in self.hparams["regime"] else batch.y
         )
         
@@ -139,23 +138,23 @@ class GNNBase(LightningModule):
             output, truth_sample.float(), weight=manual_weights, pos_weight=weight
         )
 
-        self.log("train_loss", loss)
+        self.log("train_loss", loss, on_epoch=True, on_step=False, batch_size=10000)
 
         return loss
 
-    def log_metrics(self, preds, truth, batch, loss):
+    def log_metrics(self, score, preds, truth, batch, loss):
 
-        edge_positive = (preds > self.hparams["edge_cut"]).sum().float()
+        edge_positive = preds.sum().float()
         edge_true = truth.sum().float()
         edge_true_positive = (
-            (truth & (preds > self.hparams["edge_cut"])).sum().float()
+            (truth.bool() & preds).sum().float()
         )
-        
-        eff = (edge_true_positive / max(1, edge_true)).clone().detach()
-        pur = (edge_true_positive / max(1, edge_positive)).clone().detach()
-        
-        auc = roc_auc_score(truth.cpu().detach(), preds.cpu().detach())
-        
+
+        eff = edge_true_positive.clone().detach() / max(1, edge_true)
+        pur = edge_true_positive.clone().detach() / max(1, edge_positive)
+
+        auc = roc_auc_score(truth.bool().cpu().detach(), score.cpu().detach())
+
         current_lr = self.optimizers().param_groups[0]["lr"]
         self.log_dict(
             {
@@ -164,7 +163,7 @@ class GNNBase(LightningModule):
                 "eff": eff,
                 "pur": pur,
                 "current_lr": current_lr,
-            }
+            }, on_epoch=True, on_step=False, batch_size=10000
         )
 
     def shared_evaluation(self, batch, batch_idx, log=False):
@@ -172,10 +171,14 @@ class GNNBase(LightningModule):
         weight = (
             torch.tensor(self.hparams["weight"])
             if ("weight" in self.hparams)
+            # FIXME::ADAK: I have removed .bool()
+            # else torch.tensor((~batch.y_pid.bool()).sum() / batch.y_pid.sum())
             else torch.tensor((~batch.y_pid).sum() / batch.y_pid.sum())
         )
 
         truth = (
+            # FIXME::ADAK: I have removed .bool()
+            # batch.y_pid.bool() if "pid" in self.hparams["regime"] else batch.y.bool()
             batch.y_pid if "pid" in self.hparams["regime"] else batch.y
         )
         
@@ -193,17 +196,14 @@ class GNNBase(LightningModule):
         )
 
         # Edge filter performance
-        # FIXME::ADAK: UserWarning: nn.functional.sigmoid is deprecated. Use torch.sigmoid instead
-        preds = torch.sigmoid(output) # F.sigmoid(output)
+        score = torch.sigmoid(output)
+        preds = score > self.hparams["edge_cut"]
         
         if log:
-            self.log_metrics(preds, truth_sample, batch, loss)
+            self.log_metrics(score, preds, truth_sample, batch, loss)
 
-        return {
-            "loss": loss,
-            "preds": preds,
-            "truth": truth_sample,
-        }
+        return {"loss": loss, "score": score, "preds": preds, "truth": truth_sample}
+        
 
     def validation_step(self, batch, batch_idx):
 
@@ -217,13 +217,6 @@ class GNNBase(LightningModule):
 
         return outputs
 
-    def test_step_end(self, output_results):
-        # print("Step:", output_results)
-        pass
-    
-    def test_epoch_end(self, outputs):
-        # print("Epoch:", outputs)
-        pass
 
     def optimizer_step(
         self,
@@ -238,10 +231,10 @@ class GNNBase(LightningModule):
     ):
         # warm up lr
         if (self.hparams["warmup"] is not None) and (
-            self.trainer.global_step < self.hparams["warmup"]
+            self.trainer.current_epoch < self.hparams["warmup"]  # global_step > current_epoch
         ):
             lr_scale = min(
-                1.0, float(self.trainer.global_step + 1) / self.hparams["warmup"]
+                1.0, float(self.trainer.current_epoch + 1) / self.hparams["warmup"]
             )
             for pg in optimizer.param_groups:
                 pg["lr"] = lr_scale * self.hparams["lr"]

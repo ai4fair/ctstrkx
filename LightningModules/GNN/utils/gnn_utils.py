@@ -1,23 +1,32 @@
-import os
-import sys
-import torch
-import torch.nn as nn
-import numpy as np
-import pandas as pd
-#import cupy as cp
+import os, sys
 
+import torch.nn as nn
+import torch
+import pandas as pd
+import numpy as np
+
+# Find current device.
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Only import cupy in CUDA environment.
+if device == "cuda":
+    import cupy as cp
 
 # ---------------------------- Dataset Processing -------------------------
 
-
-def load_dataset(input_dir, num, pt_background_cut, pt_signal_cut, noise):
-    """Load data and apply pt cuts."""
-    if input_dir is not None:
-        all_events = os.listdir(input_dir)
-        all_events = sorted([os.path.join(input_dir, event) for event in all_events])
+# ADAK: Modification here
+def load_dataset(input_subdir="",
+    num_events=10,
+    pt_background_cut=0,
+    pt_signal_cut=0,
+    noise=False,
+    **kwargs):
+    if input_subdir is not None:
+        all_events = os.listdir(input_subdir)
+        all_events = sorted([os.path.join(input_subdir, event) for event in all_events])
         loaded_events = [
             torch.load(event, map_location=torch.device("cpu"))
-            for event in all_events[:num]
+            for event in all_events[:num_events]
         ]
         loaded_events = select_data(
             loaded_events, pt_background_cut, pt_signal_cut, noise
@@ -26,21 +35,17 @@ def load_dataset(input_dir, num, pt_background_cut, pt_signal_cut, noise):
     else:
         return None
 
-    return included_edges, included_edges_mask # FIXME::ADAK: This will never execute.
-
-
+# ADAK: Modification here
 def select_data(events, pt_background_cut, pt_signal_cut, noise):
-    """Select data after applying pt cuts OR return without applying it if pt's set to zero."""
-    
     # Handle event in batched form
     if type(events) is not list:
         events = [events]
 
     # NOTE: Cutting background by pT BY DEFINITION removes noise
-    if (pt_background_cut > 0) | (pt_signal_cut > 0):
+    if (pt_background_cut > 0) or not noise:
         for event in events:
 
-            edge_mask = (event.pt[event.edge_index] > pt_background_cut).all(0)
+            edge_mask = ((event.pt[event.edge_index] > pt_background_cut) & (event.pid[event.edge_index] == event.pid[event.edge_index]) & (event.pid[event.edge_index] != 0)).all(0)
             event.edge_index = event.edge_index[:, edge_mask]
             event.y = event.y[edge_mask]
 
@@ -48,11 +53,21 @@ def select_data(events, pt_background_cut, pt_signal_cut, noise):
                 if event.weights.shape[0] == edge_mask.shape[0]:
                     event.weights = event.weights[edge_mask]
 
-            if (pt_signal_cut > pt_background_cut) and (
-                "signal_true_edges" in event.__dict__.keys()
-            ):
-                signal_mask = (event.pt[event.signal_true_edges] > pt_signal_cut).all(0)
-                event.signal_true_edges = event.signal_true_edges[:, signal_mask]
+            if "y_pid" in event.__dict__.keys():
+                event.y_pid = event.y_pid[edge_mask]
+
+    for event in events:
+        if "y_pid" not in event.__dict__.keys():
+            event.y_pid = (event.pid[event.edge_index[0]] == event.pid[event.edge_index[1]]) & event.pid[event.edge_index[0]].bool()
+
+        if (
+            "signal_true_edges" in event.__dict__.keys()
+            and event.signal_true_edges is not None
+        ):
+            signal_mask = (
+                event.pt[event.signal_true_edges] > pt_signal_cut
+            ).all(0)
+            event.signal_true_edges = event.signal_true_edges[:, signal_mask]   
 
     return events
 
@@ -177,7 +192,7 @@ def hard_eta_edge_slice(delta_eta, batch):
 
 # ------------------------- Convenience Utilities ---------------------------
 
-
+# ADAK: Modification here
 def make_mlp(
     input_size,
     sizes,
@@ -188,7 +203,7 @@ def make_mlp(
     """Construct an MLP with specified fully-connected layers."""
     hidden_activation = getattr(nn, hidden_activation)
     if output_activation is not None:
-        output_activation = getattr(torch, output_activation) # FIXME::ADAK: nn >> torch for sigmoid for output
+        output_activation = getattr(torch, output_activation) # FIXME:: nn >> torch for sigmoid()
     layers = []
     n_layers = len(sizes)
     sizes = [input_size] + sizes
