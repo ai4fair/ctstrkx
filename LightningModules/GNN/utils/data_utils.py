@@ -1,0 +1,125 @@
+import os, sys
+import numpy as np
+import pandas as pd
+
+import torch
+import torch.nn as nn
+from torch.utils.data import random_split
+
+
+
+# Find current device.
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Only import cupy in CUDA environment.
+if device == "cuda":
+    import cupy as cp
+
+# TODO: Fetch events from 'feature_store', shuffle & split according to 
+# 'datatype_split' variable provided by the train_quickstart_GNN.yaml
+
+# ---------------------------- Dataset Processing -------------------------
+# ADAK: From embedding/utils
+
+def split_datasets(
+    input_dir="",
+    train_split=[100, 10, 10],
+    pt_background_cut=0,
+    pt_signal_cut=0,
+    nhits=0,
+    primary_only=False,
+    true_edges=None,
+    noise=True,
+    seed=1,
+    **kwargs
+):
+    """
+    Prepare the random Train, Val, Test split, using a seed for reproducibility. Seed should be
+    changed across final varied runs, but can be left as default for experimentation.
+    """
+    
+    # random seed
+    torch.manual_seed(seed)
+    
+    # load data
+    loaded_events = load_dataset(
+        input_dir,
+        sum(train_split),
+        pt_background_cut,
+        pt_signal_cut,
+        nhits,
+        primary_only,
+        true_edges,
+        noise,
+    )
+    
+    # split data
+    train_events, val_events, test_events = random_split(loaded_events, train_split)
+    
+    return train_events, val_events, test_events
+  
+# ADAK: Modification here
+def load_dataset(input_subdir="",
+    num_events=10,
+    pt_background_cut=0,
+    pt_signal_cut=0,
+    noise=False,
+    **kwargs):
+    if input_subdir is not None:
+        all_events = os.listdir(input_subdir)
+        all_events = sorted([os.path.join(input_subdir, event) for event in all_events])
+        loaded_events = [
+            torch.load(event, map_location=torch.device("cpu"))
+            for event in all_events[:num_events]
+        ]
+        loaded_events = select_data(
+            loaded_events, pt_background_cut, pt_signal_cut, noise
+        )
+        return loaded_events
+    else:
+        return None
+
+# ADAK: Modification here
+def select_data(events, pt_background_cut, pt_signal_cut, noise):
+    # Handle event in batched form
+    if type(events) is not list:
+        events = [events]
+
+    # NOTE: Cutting background by pT BY DEFINITION removes noise
+    if (pt_background_cut > 0) or not noise:
+        for event in events:
+
+            edge_mask = ((event.pt[event.edge_index] > pt_background_cut) & (event.pid[event.edge_index] == event.pid[event.edge_index]) & (event.pid[event.edge_index] != 0)).all(0)
+            
+            # Apply Mask on "edge_index, y, weights, y_pid"
+            event.edge_index = event.edge_index[:, edge_mask]
+            
+            # FIXME: ADAK: y isn't present in my data, above line will give 
+            # an error. The solution is to also put it under an if-conditon
+            
+            # event.y = event.y[edge_mask]
+            if "y" in event.__dict__.keys():
+                event.y = event.y[edge_mask]
+            
+            if "weights" in event.__dict__.keys():
+                if event.weights.shape[0] == edge_mask.shape[0]:
+                    event.weights = event.weights[edge_mask]
+
+            if "y_pid" in event.__dict__.keys():
+                event.y_pid = event.y_pid[edge_mask]
+
+    for event in events:
+        if "y_pid" not in event.__dict__.keys():
+            event.y_pid = (event.pid[event.edge_index[0]] == event.pid[event.edge_index[1]]) & event.pid[event.edge_index[0]].bool()
+
+        if (
+            "signal_true_edges" in event.__dict__.keys()
+            and event.signal_true_edges is not None
+        ):
+            signal_mask = (
+                event.pt[event.signal_true_edges] > pt_signal_cut
+            ).all(0)
+            event.signal_true_edges = event.signal_true_edges[:, signal_mask]   
+
+    return events
+

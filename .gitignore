@@ -60,7 +60,7 @@
 lightning_logs
 __pycache__
 
-data_*
+data_sets
 train_*
 run_*
 run*
