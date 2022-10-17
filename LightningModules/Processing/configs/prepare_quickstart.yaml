@@ -10,7 +10,7 @@ min_pt: 0                   # 0: no filter, 0.05: remove lower than 50 MeV
 
 chunksize: 1
 
-noise: False
+noise: True
 skewed: False
 layerwise: True             # True Edge List
 modulewise: True            # True Edge List

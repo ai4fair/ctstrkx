@@ -3,13 +3,16 @@ import logging
 
 import pytorch_lightning as pl
 from pytorch_lightning import LightningModule
-from datetime import timedelta
+
+import torch
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
 from torch.nn import Linear
-import torch
 
-from .utils.gnn_utils import load_dataset
+from datetime import timedelta
+
+from .utils.gnn_utils import load_dataset     # Remove when the split_datasets is working
+from .utils.data_utils import split_datasets  # New way to run GNN directly after Processing
 from sklearn.metrics import roc_auc_score
 
 
@@ -21,6 +24,7 @@ class GNNBase(LightningModule):
         """
         # Assign hyperparameters
         self.save_hyperparameters(hparams)
+        # self.trainset, self.valset, self.testset = None, None, None
         
         # Set workers from hparams
         self.n_workers = (
@@ -28,7 +32,8 @@ class GNNBase(LightningModule):
             if "n_workers" in self.hparams
             else len(os.sched_getaffinity(0))
         )
-        
+
+
     def setup(self, stage):
         # Handle any subset of [train, val, test] data split, assuming that ordering
 
@@ -46,27 +51,37 @@ class GNNBase(LightningModule):
             for i, input_subdir in enumerate(input_subdirs)
         ]
 
-    def setup_data(self):
 
+    def setup_data(self):
         self.setup(stage="fit")
+
 
     def train_dataloader(self):
         if ("trainset" not in self.__dict__.keys()) or (self.trainset is None):
             self.setup_data()
 
-        return DataLoader(self.trainset, batch_size=1, num_workers=self.n_workers)
+        return DataLoader(
+                self.trainset, batch_size=1, num_workers=self.n_workers
+            )  # , pin_memory=True, persistent_workers=True)
+
 
     def val_dataloader(self):
         if self.valset is not None:
-            return DataLoader(self.valset, batch_size=1, num_workers=self.n_workers)
+            return DataLoader(
+                self.valset, batch_size=1, num_workers=self.n_workers
+            )  # , pin_memory=True, persistent_workers=True)
         else:
             return None
 
+
     def test_dataloader(self):
         if self.testset is not None:
-            return DataLoader(self.testset, batch_size=1, num_workers=self.n_workers)
+            return DataLoader(
+                self.testset, batch_size=1, num_workers=self.n_workers
+            )  # , pin_memory=True, persistent_workers=True)
         else:
             return None
+
 
     def configure_optimizers(self):
         optimizer = [
@@ -91,6 +106,7 @@ class GNNBase(LightningModule):
         ]
         return optimizer, scheduler
 
+
     def get_input_data(self, batch):
 
         if self.hparams["cell_channels"] > 0:
@@ -104,6 +120,7 @@ class GNNBase(LightningModule):
 
         return input_data
 
+
     def handle_directed(self, batch, edge_sample, truth_sample):
 
         edge_sample = torch.cat([edge_sample, edge_sample.flip(0)], dim=-1)        
@@ -115,6 +132,7 @@ class GNNBase(LightningModule):
             truth_sample = truth_sample[direction_mask]
 
         return edge_sample, truth_sample
+
 
     def training_step(self, batch, batch_idx):
 
@@ -145,9 +163,10 @@ class GNNBase(LightningModule):
             output, truth_sample.float(), weight=manual_weights, pos_weight=weight
         )
 
-        self.log("train_loss", loss, on_epoch=True, on_step=False, batch_size=10000)
+        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=10240)
 
         return loss
+
 
     def log_metrics(self, score, preds, truth, batch, loss):
 
@@ -170,8 +189,9 @@ class GNNBase(LightningModule):
                 "eff": eff,
                 "pur": pur,
                 "current_lr": current_lr,
-            }, on_epoch=True, on_step=False, batch_size=10000
+            }, on_step=False, on_epoch=True, prog_bar=False, batch_size=10240
         )
+
 
     def shared_evaluation(self, batch, batch_idx, log=False):
         
@@ -210,13 +230,14 @@ class GNNBase(LightningModule):
             self.log_metrics(score, preds, truth_sample, batch, loss)
 
         return {"loss": loss, "score": score, "preds": preds, "truth": truth_sample}
-        
+
 
     def validation_step(self, batch, batch_idx):
 
         outputs = self.shared_evaluation(batch, batch_idx, log=True)
 
         return outputs["loss"]
+
 
     def test_step(self, batch, batch_idx):
 

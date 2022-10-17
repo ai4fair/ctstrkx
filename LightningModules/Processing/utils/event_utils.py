@@ -21,6 +21,7 @@ import torch
 from torch_geometric.data import Data
 
 from .graph_utils import get_input_edges, graph_intersection
+
 # Device
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -50,52 +51,7 @@ def get_layerwise_edges(hits):
             
     true_edges = np.array(true_edges).T
     return true_edges, hits
-    
-    
-"""
-def get_layerwise_edges(hits):
-    
-    # Calculate and assign parameter R = sqrt(x**2 + y**2 + z**2), 
-    hits = hits.assign(
-        R=np.sqrt(
-            (hits.x - hits.vx) ** 2 + (hits.y - hits.vy) ** 2 + (hits.z - hits.vz) ** 2
-        )
-    )
-    
-    # Sort the hits according to R. First, reset_index and drop. Second, reset_index 
-    # again to get the 'index' column which we can use later on.
-    hits = hits.sort_values("R").reset_index(drop=True).reset_index(drop=False)
-    
-    # Find hits for particle_id == 0 and assign to -nan value 
-    hits.loc[hits["particle_id"] == 0, "particle_id"] = np.nan
-    
-    # Get hit_list by particle_id, layer_id. It will return indice of hits
-    # from each particle_id in all layers. The .agg(), are just to format the
-    # the output for better handling, as we will see later.
-    hit_list = (
-        hits.groupby(["particle_id", "layer_id"], sort=False)["index"]
-        .agg(lambda x: list(x))
-        .groupby(level=0)
-        .agg(lambda x: list(x))
-    )
-    
-    # Build True Edges. First, get one row and cascade it (row[0:-1]: 0 to n-1 elements,
-    # row[1:]: 1 to n elements). One can use itertools.product(b, b) to creat cartesian
-    # product which is set of ordered pairs (a, b) provided a E row[0:-1] and b E row[1:].
-    # The itertools.product(b, b) returns an iterable (list, set, etc), so use list.extend() 
-    # to append the true_edges list. Note: list.append() add only one element to end of list.
-    true_edges = []
-    for row in hit_list.values:
-        for i, j in zip(row[0:-1], row[1:]):
-            true_edges.extend(list(itertools.product(i, j))) # extend(): extends existi
-    
-    # Convert to ndarray and transpose it.
-    true_edges = np.array(true_edges).T
-    
-    # As hits are modified due R param so return it as well.
-    return true_edges, hits
-"""
-    
+ 
     
 def get_modulewise_edges(hits):
     """Get modulewise (layerless) true edge list. Here hits represent complete event."""
@@ -124,7 +80,8 @@ def get_modulewise_edges(hits):
     signal_list = signal.groupby(["particle_id"], sort=False)["index"].agg(
         lambda x: list(x)
     )
-
+    
+    # Form edges
     true_edges = []
     for row in signal_list.values:
         for i, j in zip(row[:-1], row[1:]):
@@ -158,6 +115,7 @@ def select_hits(event_prefix=None, skewed=False, noise=False, min_pt=None):
     
     
     # ADAK: Start
+    
     # Need 'isochrone', 'skewed' & 'sector_id' columns from 'tubes'
     hits = hits.merge(tubes[["hit_id", "isochrone", "skewed", "sector_id"]], on="hit_id")
     
@@ -174,8 +132,8 @@ def select_hits(event_prefix=None, skewed=False, noise=False, min_pt=None):
         hits = pd.concat([vlid_groups.get_group(vlids[i]).assign(layer=i) for i in range(n_det_layers)])
     else:
         hits = hits.rename(columns={"layer_id": "layer"})
-    # ADAK: End
     
+    # ADAK: End
     
     # Calculate derived hits variables
     r = np.sqrt(hits.x**2 + hits.y**2)
@@ -185,8 +143,8 @@ def select_hits(event_prefix=None, skewed=False, noise=False, min_pt=None):
     hits = hits.assign(r=r, phi=phi).merge(truth, on="hit_id")
     
     return hits
-    
-    
+
+
 def build_event(event_prefix, feature_scale, layerwise=True, modulewise=True,
                 inputedges=False, skewed=False, noise=False, min_pt=None):
     """True edges using ordering by R'=distance from production vertex of each particle.
@@ -325,29 +283,12 @@ def prepare_event(
                 
             if layerwise_true_edges is not None:
                 data.layerwise_true_edges = torch.from_numpy(layerwise_true_edges)
-            
-            # NOTE: I am jumping from Processing to GNN stage, so I need ground truth (GT) of input
-            # edges (edge_index). After embedding, one gets GT as y, and after filtering one gets 
-            # the GT in the form of 'y_pid'. As I intend to skip both the Embedding & the Filtering
-            # stages, the input graph and its GT is build in Processing stage. The GNN can run after
-            # either embedding or filtering stages so it look for either 'y' or 'y_pid', existance of
-            # one of these means the execution of these stages i.e. if y_pid exists in data that means
-            # both embedding and filtering stages has been executed. If only 'y' exists then only 
-            # embedding stage has been executed. In principle, I should have only one of these in Data.
-            
-            # Now, for my case, I will build input graph duing Processing and also add its GT to the
-            # data. If the 'edge_index' is build in Processing then ground truth (y or y_pid) should 
-            # also be built here. The dimension of y (n) and y_pid (m) are given below, here m < n.
-            
-            # y (n): appears after embedding stage along with e_radius (2,n), y.shape==e_radius.shape[1]
-            # y_pid (m): appears after filtering stage along with e_radius (2,m), y_pid.shape==e_radius.shape[1]
-            
+                       
             if layerwise_input_edges is not None:
                 input_edges = torch.from_numpy(layerwise_input_edges)
                 new_input_graph, y = graph_intersection(input_edges, data.layerwise_true_edges)
                 data.edge_index = new_input_graph
-                # data.y = y     # if regime: [] will point to embedding
-                data.y_pid = y  # if regime: [[pid]] points to filtering
+                data.y = y
 
             # TODO: add cell/tube information to Data, Check for STT
             # logging.info("Getting cell info")
