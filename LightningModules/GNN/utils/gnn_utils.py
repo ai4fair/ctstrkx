@@ -12,15 +12,16 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 if device == "cuda":
     import cupy as cp
 
-# ---------------------------- Dataset Processing -------------------------
 
-# ADAK: Modification here
+# ---------------------- Data Processing I
 def load_dataset(input_subdir="",
     num_events=10,
     pt_background_cut=0,
     pt_signal_cut=0,
     noise=False,
     **kwargs):
+    
+    # Load dataset from a subdir
     if input_subdir is not None:
         all_events = os.listdir(input_subdir)
         all_events = sorted([os.path.join(input_subdir, event) for event in all_events])
@@ -35,8 +36,9 @@ def load_dataset(input_subdir="",
     else:
         return None
 
-# ADAK: Modification here
+
 def select_data(events, pt_background_cut, pt_signal_cut, noise):
+    
     # Handle event in batched form
     if type(events) is not list:
         events = [events]
@@ -49,13 +51,7 @@ def select_data(events, pt_background_cut, pt_signal_cut, noise):
             
             # Apply Mask on "edge_index, y, weights, y_pid"
             event.edge_index = event.edge_index[:, edge_mask]
-            
-            # FIXME: ADAK: y isn't present in my data, above line will give 
-            # an error. The solution is to also put it under an if-conditon
-            
-            # event.y = event.y[edge_mask]
-            if "y" in event.__dict__.keys():
-                event.y = event.y[edge_mask]
+            event.y = event.y[edge_mask]
             
             if "weights" in event.__dict__.keys():
                 if event.weights.shape[0] == edge_mask.shape[0]:
@@ -75,15 +71,19 @@ def select_data(events, pt_background_cut, pt_signal_cut, noise):
             signal_mask = (
                 event.pt[event.signal_true_edges] > pt_signal_cut
             ).all(0)
+            
             event.signal_true_edges = event.signal_true_edges[:, signal_mask]   
 
     return events
 
 
+# ---------------------- Data Processing II
 def random_edge_slice_v2(delta_phi, batch):
     """
-    Same behaviour as v1, but avoids the expensive calls to np.isin and np.unique, using sparse operations on GPU
+    Same behaviour as v1, but avoids the expensive calls to 
+    np.isin() & np.unique(), using sparse operations on GPU
     """
+    
     # 1. Select random phi
     random_phi = np.random.rand() * 2 - 1
     e = batch.e_radius.to("cpu").numpy()
@@ -143,6 +143,7 @@ def random_edge_slice_v2(delta_phi, batch):
 
 
 def random_edge_slice(delta_phi, batch):
+
     # 1. Select random phi
     random_phi = np.random.rand() * 2 - 1
     e = batch.e_radius.to("cpu")
@@ -179,6 +180,7 @@ def hard_random_edge_slice(delta_phi, batch):
 
 
 def calc_eta(r, z):
+
     theta = np.arctan2(r, z)
     return -1.0 * np.log(np.tan(theta / 2.0))
 
@@ -198,7 +200,7 @@ def hard_eta_edge_slice(delta_eta, batch):
     return subset_edges_ind
 
 
-# ------------------------- Convenience Utilities ---------------------------
+# ---------------------- Convenience Utilities
 
 # ADAK: Modification here
 def make_mlp(
@@ -230,7 +232,7 @@ def make_mlp(
     return nn.Sequential(*layers)
 
 
-# ----------------------------- Performance Utilities ---------------------------
+# ---------------------- Performance Utilities
 
 
 def graph_model_evaluation(model, trainer, fom="eff", fixed_value=0.96):

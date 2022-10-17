@@ -4,15 +4,17 @@ output_dir: ${EXATRKX_DATA}/run_quick/gnn_processed
 project: GNNStudy
 edge_cut: 0.5
 
-n_workers: 8
-
 # Dataset parameters
 pt_signal_min: 0.
 pt_background_min: 0.
-datatype_names: [[train, val, test]]  # Which directory prefixes to use, assuming at least a train dataset 
-datatype_split: [[9000, 500, 500]]  # Number of [training, validation, testing] examples
-noise: False
+datatype_names: [[train, val, test]]
+datatype_split: [[9000, 500, 500]]
+
+train_split: [[9000, 500, 500]]  # for data_utils (datatype_<names/split> will be ignored)
+
+noise: True
 overwrite: True
+n_workers: 8
 
 # Model parameters
 spatial_channels: 3

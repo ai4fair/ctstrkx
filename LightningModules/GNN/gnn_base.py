@@ -1,5 +1,9 @@
+#!/usr/bin/env python
+# coding: utf-8
+
 import sys, os
 import logging
+import numpy as np
 
 import pytorch_lightning as pl
 from pytorch_lightning import LightningModule
@@ -13,18 +17,24 @@ from datetime import timedelta
 
 from .utils.gnn_utils import load_dataset     # Remove when the split_datasets is working
 from .utils.data_utils import split_datasets  # New way to run GNN directly after Processing
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, accuracy_score
 
+
+def roc_auc_score_robust(y_true, y_pred):
+    # Handle if y_true holds only one class
+    if len(np.unique(y_true)) == 1:
+        return accuracy_score(y_true, np.rint(y_pred))
+    else:
+        return roc_auc_score(y_true, y_pred)
+        
 
 class GNNBase(LightningModule):
     def __init__(self, hparams):
         super().__init__()
-        """
-        Initialise the Lightning Module that can scan over different GNN training regimes
-        """
+        """Initialise LightningModule to scan different GNN training regimes"""
+        
         # Assign hyperparameters
         self.save_hyperparameters(hparams)
-        # self.trainset, self.valset, self.testset = None, None, None
         
         # Set workers from hparams
         self.n_workers = (
@@ -32,11 +42,22 @@ class GNNBase(LightningModule):
             if "n_workers" in self.hparams
             else len(os.sched_getaffinity(0))
         )
-
-
+        
+        # Datasets
+        # self.trainset, self.valset, self.testset = None, None, None
+    
+    
+    # TODO: Simplify data loading & splitting. First, directly load data from 'processing'
+    # stage. Secondly, split data randomly according to 'train_split' param from config.
+    
+    # def setup_v2(self, stage):
+    #    # Handle data directly from the "feature_store"
+    #    self.trainset, self.valset, self.testset = split_datasets(**self.hparams)
+    
+    
     def setup(self, stage):
+    
         # Handle any subset of [train, val, test] data split, assuming that ordering
-
         input_subdirs = [None, None, None]
         input_subdirs[: len(self.hparams["datatype_names"])] = [
             os.path.join(self.hparams["input_dir"], datatype)
@@ -55,7 +76,8 @@ class GNNBase(LightningModule):
     def setup_data(self):
         self.setup(stage="fit")
 
-
+    
+    # Data Loaders
     def train_dataloader(self):
         if ("trainset" not in self.__dict__.keys()) or (self.trainset is None):
             self.setup_data()
@@ -82,7 +104,8 @@ class GNNBase(LightningModule):
         else:
             return None
 
-
+    
+    # Configure Optimizer & Scheduler
     def configure_optimizers(self):
         optimizer = [
             torch.optim.AdamW(
@@ -107,6 +130,7 @@ class GNNBase(LightningModule):
         return optimizer, scheduler
 
 
+    # 1 - Helper Function
     def get_input_data(self, batch):
 
         if self.hparams["cell_channels"] > 0:
@@ -121,6 +145,7 @@ class GNNBase(LightningModule):
         return input_data
 
 
+    # 2 - Helper Function
     def handle_directed(self, batch, edge_sample, truth_sample):
 
         edge_sample = torch.cat([edge_sample, edge_sample.flip(0)], dim=-1)        
@@ -134,40 +159,7 @@ class GNNBase(LightningModule):
         return edge_sample, truth_sample
 
 
-    def training_step(self, batch, batch_idx):
-
-        weight = (
-            torch.tensor(self.hparams["weight"])
-            if ("weight" in self.hparams)
-            # FIXME::ADAK: I have removed .bool()
-            # else torch.tensor((~batch.y_pid.bool()).sum() / batch.y_pid.sum())
-            else torch.tensor((~batch.y_pid).sum() / batch.y_pid.sum())
-        )
-
-        truth = (
-            # FIXME::ADAK: I have removed .bool()
-            # batch.y_pid.bool() if "pid" in self.hparams["regime"] else batch.y.bool()
-            batch.y_pid if "pid" in self.hparams["regime"] else batch.y
-        )
-        
-        edge_sample, truth_sample = self.handle_directed(batch, batch.edge_index, truth)
-        input_data = self.get_input_data(batch)
-        output = self(input_data, edge_sample).squeeze()
-
-        if "weighting" in self.hparams["regime"]:
-            manual_weights = batch.weights
-        else:
-            manual_weights = None
-
-        loss = F.binary_cross_entropy_with_logits(
-            output, truth_sample.float(), weight=manual_weights, pos_weight=weight
-        )
-
-        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=10240)
-
-        return loss
-
-
+    # 3 - Helper Function
     def log_metrics(self, score, preds, truth, batch, loss):
 
         edge_positive = preds.sum().float()
@@ -178,9 +170,10 @@ class GNNBase(LightningModule):
 
         eff = edge_true_positive.clone().detach() / max(1, edge_true)
         pur = edge_true_positive.clone().detach() / max(1, edge_positive)
-
-        auc = roc_auc_score(truth.bool().cpu().detach(), score.cpu().detach())
-
+        
+        # special function to handle classes in y_true
+        auc = roc_auc_score_robust(truth.bool().cpu().detach(), score.cpu().detach())
+        
         current_lr = self.optimizers().param_groups[0]["lr"]
         self.log_dict(
             {
@@ -193,20 +186,17 @@ class GNNBase(LightningModule):
         )
 
 
-    def shared_evaluation(self, batch, batch_idx, log=False):
-        
+    # Train Step
+    def training_step(self, batch, batch_idx):
+
         weight = (
             torch.tensor(self.hparams["weight"])
             if ("weight" in self.hparams)
-            # FIXME::ADAK: I have removed .bool()
-            # else torch.tensor((~batch.y_pid.bool()).sum() / batch.y_pid.sum())
-            else torch.tensor((~batch.y_pid).sum() / batch.y_pid.sum())
+            else torch.tensor((~batch.y_pid.bool()).sum() / batch.y_pid.sum())
         )
 
         truth = (
-            # FIXME::ADAK: I have removed .bool()
-            # batch.y_pid.bool() if "pid" in self.hparams["regime"] else batch.y.bool()
-            batch.y_pid if "pid" in self.hparams["regime"] else batch.y
+            batch.y_pid.bool() if "pid" in self.hparams["regime"] else batch.y.bool()
         )
         
         edge_sample, truth_sample = self.handle_directed(batch, batch.edge_index, truth)
@@ -217,7 +207,38 @@ class GNNBase(LightningModule):
             manual_weights = batch.weights
         else:
             manual_weights = None
+        
+        loss = F.binary_cross_entropy_with_logits(
+            output, truth_sample.float(), weight=manual_weights, pos_weight=weight
+        )
 
+        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=10240)
+
+        return loss
+
+
+    # Shared Evaluation for Validation and Test Steps
+    def shared_evaluation(self, batch, batch_idx, log=False):
+        
+        weight = (
+            torch.tensor(self.hparams["weight"])
+            if ("weight" in self.hparams)
+            else torch.tensor((~batch.y_pid.bool()).sum() / batch.y_pid.sum())
+        )
+
+        truth = (
+            batch.y_pid.bool() if "pid" in self.hparams["regime"] else batch.y.bool()
+        )
+        
+        edge_sample, truth_sample = self.handle_directed(batch, batch.edge_index, truth)
+        input_data = self.get_input_data(batch)
+        output = self(input_data, edge_sample).squeeze()
+
+        if "weighting" in self.hparams["regime"]:
+            manual_weights = batch.weights
+        else:
+            manual_weights = None
+        
         loss = F.binary_cross_entropy_with_logits(
             output, truth_sample.float(), weight=manual_weights, pos_weight=weight
         )
@@ -232,6 +253,7 @@ class GNNBase(LightningModule):
         return {"loss": loss, "score": score, "preds": preds, "truth": truth_sample}
 
 
+    # Validation Step
     def validation_step(self, batch, batch_idx):
 
         outputs = self.shared_evaluation(batch, batch_idx, log=True)
@@ -239,6 +261,7 @@ class GNNBase(LightningModule):
         return outputs["loss"]
 
 
+    # Test Step
     def test_step(self, batch, batch_idx):
 
         outputs = self.shared_evaluation(batch, batch_idx, log=False)
@@ -246,6 +269,7 @@ class GNNBase(LightningModule):
         return outputs
 
 
+    # Optimizer Step
     def optimizer_step(
         self,
         epoch,
