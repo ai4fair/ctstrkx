@@ -1,0 +1,8 @@
+input_dir: ${EXATRKX_DATA}/run_quick/gnn_processed
+output_dir: ${EXATRKX_DATA}/run_quick/seg_processed
+datatype_names: [[train, val, test]]
+edge_cut: 0.5
+
+n_tasks: 1
+n_files: 10
+n_workers: 1

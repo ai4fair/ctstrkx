@@ -56,3 +56,53 @@ def label_graph(
 
     except Exception as inst:
         print("File:", input_file, "had exception", inst)
+        
+        
+# From Common Tracking
+def label_graph(
+    input_file: str, output_dir: str, edge_cut: float = 0.5, **kwargs
+) -> None:
+
+    """Loads an input_file and outputs a segmented (i.e. labelled) graph.
+
+    Args:
+        input_file: Location of the input graph (a torch pickled file containing a Pytorch Geometric data object).
+        edge_cut: The minimum score for an edge to become part of a segment
+
+    """
+
+    try:
+
+        output_file = os.path.join(output_dir, os.path.split(input_file)[-1])
+
+        if not os.path.exists(output_file) or overwrite:
+
+            logging.info("Preparing event {}".format(output_file))
+            graph = torch.load(input_file, map_location="cpu")
+
+            # apply cut
+            passing_edges = graph.edge_index[:, graph.scores > edge_cut]
+
+            # attach labels to data
+            graph.labels = label_segments(passing_edges, len(graph.x))
+
+            with open(output_file, "wb") as pickle_file:
+                torch.save(data, pickle_file)
+
+        else:
+            logging.info("{} already exists".format(output_file))
+
+    except Exception as inst:
+        print("File:", input_file, "had exception", inst)
+
+
+def labelSegments(input_edges, num_nodes):
+
+    # get connected components
+    sparse_edges = sp.coo_matrix(
+        (np.ones(input_edges.shape[1]), input_edges.cpu().numpy()),
+        shape=(num_nodes, num_nodes),
+    )
+    connected_components = scigraph.connected_components(sparse_edges)[1]
+
+    return torch.from_numpy(connected_components).type_as(input_edges)
