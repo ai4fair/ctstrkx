@@ -201,7 +201,7 @@ class GNNBase(LightningModule):
             output, truth_sample.float(), weight=manual_weights, pos_weight=weight
         )
 
-        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=10240)
+        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=False, batch_size=10240)
 
         return loss
 
