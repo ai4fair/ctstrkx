@@ -10,9 +10,9 @@ pt_background_min: 0.
 datatype_names: [[train, val, test]]
 datatype_split: [[9000, 500, 500]]
 
-train_split: [[9000, 500, 500]]  # for data_utils (datatype_<names/split> will be ignored)
+train_split: [[9000, 479, 479]]  # for data_utils (datatype_<names/split> will be ignored)
 
-noise: True
+noise: False
 overwrite: True
 n_workers: 8
 

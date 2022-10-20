@@ -1,11 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-
-# TODO: gnn_base.py (a.k.a v1.1) is exactly the same as gnn_base_v1.py, only difference 
-# is how to fetch data from "feature_store". Here, "split_datasets" do the heavy work.
-
-
 import sys, os
 import logging
 import numpy as np
@@ -20,7 +15,7 @@ from torch.nn import Linear
 
 from datetime import timedelta
 
-from .utils.data_utils import split_datasets
+from .utils.gnn_utils import load_dataset
 from sklearn.metrics import roc_auc_score, accuracy_score
 
 
@@ -46,24 +41,39 @@ class GNNBase(LightningModule):
             if "n_workers" in self.hparams
             else len(os.sched_getaffinity(0))
         )
-        
-        # Instance Variables
-        self.trainset, self.valset, self.testset = None, None, None
-    
-    
+
+
     def setup(self, stage):
-        if self.trainset is None:
-            self.trainset, self.valset, self.testset = split_datasets(**self.hparams)
     
-    
+        # Handle any subset of [train, val, test] data split, assuming that ordering
+        input_subdirs = [None, None, None]
+        input_subdirs[: len(self.hparams["datatype_names"])] = [
+            os.path.join(self.hparams["input_dir"], datatype)
+            for datatype in self.hparams["datatype_names"]
+        ]
+        self.trainset, self.valset, self.testset = [
+            load_dataset(
+                input_subdir=input_subdir,
+                num_events=self.hparams["datatype_split"][i],
+                **self.hparams
+            )
+            for i, input_subdir in enumerate(input_subdirs)
+        ]
+
+
+    def setup_data(self):
+        self.setup(stage="fit")
+
+
     # Data Loaders
     def train_dataloader(self):
-        if self.trainset is not None:
-            return DataLoader(
+        if ("trainset" not in self.__dict__.keys()) or (self.trainset is None):
+            self.setup_data()
+
+        return DataLoader(
                 self.trainset, batch_size=1, num_workers=self.n_workers
             )  # , pin_memory=True, persistent_workers=True)
-        else:
-            return None
+
 
     def val_dataloader(self):
         if self.valset is not None:
@@ -73,6 +83,7 @@ class GNNBase(LightningModule):
         else:
             return None
 
+
     def test_dataloader(self):
         if self.testset is not None:
             return DataLoader(
@@ -81,7 +92,7 @@ class GNNBase(LightningModule):
         else:
             return None
 
-    
+
     # Configure Optimizer & Scheduler
     def configure_optimizers(self):
         """Configure the Optimizer and Scheduler"""

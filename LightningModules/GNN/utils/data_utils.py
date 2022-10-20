@@ -50,7 +50,8 @@ def split_datasets(
     return train_events, val_events, test_events
   
 
-def load_dataset(input_subdir="",
+def load_dataset(
+    input_subdir="",
     num_events=10,
     pt_background_cut=0,
     pt_signal_cut=0,
@@ -62,10 +63,12 @@ def load_dataset(input_subdir="",
     if input_subdir is not None:
         all_events = os.listdir(input_subdir)
         all_events = sorted([os.path.join(input_subdir, event) for event in all_events])
+        
         loaded_events = [
             torch.load(event, map_location=torch.device("cpu"))
             for event in all_events[:num_events]
         ]
+        
         loaded_events = select_data(
             loaded_events, pt_background_cut, pt_signal_cut, noise
         )
