@@ -1,9 +1,11 @@
-import os, sys
-import numpy as np
-import pandas as pd
+#!/usr/bin/env python
+# coding: utf-8
 
+import os
 import torch
 import torch.nn as nn
+import random
+import numpy as np
 
 # Find current device.
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -14,17 +16,22 @@ if device == "cuda":
 
 
 # ---------------------- Data Processing I
-def load_dataset(input_subdir="",
-    num_events=10,
-    pt_background_cut=0,
-    pt_signal_cut=0,
-    noise=False,
-    **kwargs):
-    
+def load_dataset(
+        input_subdir="",
+        num_events=10,
+        pt_background_cut=0,
+        pt_signal_cut=0,
+        noise=False,
+        **kwargs):
     # Load dataset from a subdir
     if input_subdir is not None:
         all_events = os.listdir(input_subdir)
-        all_events = sorted([os.path.join(input_subdir, event) for event in all_events])
+        if "sorted_events" in kwargs.keys() and kwargs["sorted_events"]:
+            all_events = sorted(all_events)
+        else:
+            random.shuffle(all_events)
+
+        all_events = [os.path.join(input_subdir, event) for event in all_events]
         loaded_events = [
             torch.load(event, map_location=torch.device("cpu"))
             for event in all_events[:num_events]
@@ -38,7 +45,6 @@ def load_dataset(input_subdir="",
 
 
 def select_data(events, pt_background_cut, pt_signal_cut, noise):
-    
     # Handle event in batched form
     if type(events) is not list:
         events = [events]
@@ -47,12 +53,14 @@ def select_data(events, pt_background_cut, pt_signal_cut, noise):
     if (pt_background_cut > 0) or not noise:
         for event in events:
 
-            edge_mask = ((event.pt[event.edge_index] > pt_background_cut) & (event.pid[event.edge_index] == event.pid[event.edge_index]) & (event.pid[event.edge_index] != 0)).all(0)
-            
+            edge_mask = ((event.pt[event.edge_index] > pt_background_cut) &
+                         (event.pid[event.edge_index] == event.pid[event.edge_index]) &
+                         (event.pid[event.edge_index] != 0)).all(0)
+
             # Apply Mask on "edge_index, y, weights, y_pid"
             event.edge_index = event.edge_index[:, edge_mask]
             event.y = event.y[edge_mask]
-            
+
             if "weights" in event.__dict__.keys():
                 if event.weights.shape[0] == edge_mask.shape[0]:
                     event.weights = event.weights[edge_mask]
@@ -62,17 +70,12 @@ def select_data(events, pt_background_cut, pt_signal_cut, noise):
 
     for event in events:
         if "y_pid" not in event.__dict__.keys():
-            event.y_pid = (event.pid[event.edge_index[0]] == event.pid[event.edge_index[1]]) & event.pid[event.edge_index[0]].bool()
+            event.y_pid = (event.pid[event.edge_index[0]] == event.pid[event.edge_index[1]]) & event.pid[
+                event.edge_index[0]].bool()
 
-        if (
-            "signal_true_edges" in event.__dict__.keys()
-            and event.signal_true_edges is not None
-        ):
-            signal_mask = (
-                event.pt[event.signal_true_edges] > pt_signal_cut
-            ).all(0)
-            
-            event.signal_true_edges = event.signal_true_edges[:, signal_mask]   
+        if "signal_true_edges" in event.__dict__.keys() and event.signal_true_edges is not None:
+            signal_mask = (event.pt[event.signal_true_edges] > pt_signal_cut).all(0)
+            event.signal_true_edges = event.signal_true_edges[:, signal_mask]
 
     return events
 
@@ -80,16 +83,15 @@ def select_data(events, pt_background_cut, pt_signal_cut, noise):
 # ---------------------- Data Processing II
 def random_edge_slice_v2(delta_phi, batch):
     """
-    Same behaviour as v1, but avoids the expensive calls to 
-    np.isin() & np.unique(), using sparse operations on GPU
+    Same behaviour as v1, but avoids the expensive calls to np.isin and np.unique, using sparse operations on GPU
     """
-    
     # 1. Select random phi
     random_phi = np.random.rand() * 2 - 1
     e = batch.e_radius.to("cpu").numpy()
     x = batch.x.to("cpu")
 
     # 2. Find edges within delta_phi of random_phi
+    e_length = e.shape[1]
     e_average = (x[e[0], 1] + x[e[1], 1]) / 2
     dif = abs(e_average - random_phi)
     subset_edges = ((dif < delta_phi) | ((2 - dif) < delta_phi)).numpy()
@@ -143,7 +145,6 @@ def random_edge_slice_v2(delta_phi, batch):
 
 
 def random_edge_slice(delta_phi, batch):
-
     # 1. Select random phi
     random_phi = np.random.rand() * 2 - 1
     e = batch.e_radius.to("cpu")
@@ -166,7 +167,6 @@ def random_edge_slice(delta_phi, batch):
 
 
 def hard_random_edge_slice(delta_phi, batch):
-
     # 1. Select random phi
     random_phi = np.random.rand() * 2 - 1
     e = batch.e_radius.to("cpu")
@@ -180,22 +180,20 @@ def hard_random_edge_slice(delta_phi, batch):
 
 
 def calc_eta(r, z):
-
     theta = np.arctan2(r, z)
     return -1.0 * np.log(np.tan(theta / 2.0))
 
 
 def hard_eta_edge_slice(delta_eta, batch):
-
-    e = batch.e_radius.to("cpu")
-    x = batch.x.to("cpu")
+    e = batch.edge_index
+    x = batch.x
 
     etas = calc_eta(x[:, 0], x[:, 2])
     random_eta = (np.random.rand() - 0.5) * 2 * (etas.max() - delta_eta)
 
     e_average = (etas[e[0]] + etas[e[1]]) / 2
     dif = abs(e_average - random_eta)
-    subset_edges_ind = ((dif < delta_eta)).numpy()
+    subset_edges_ind = (dif < delta_eta)
 
     return subset_edges_ind
 
@@ -204,11 +202,11 @@ def hard_eta_edge_slice(delta_eta, batch):
 
 # ADAK: Modification here
 def make_mlp(
-    input_size,
-    sizes,
-    hidden_activation="ReLU",
-    output_activation="ReLU",
-    layer_norm=False,
+        input_size,
+        sizes,
+        hidden_activation="ReLU",
+        output_activation="ReLU",
+        layer_norm=False,
 ):
     """Construct an MLP with specified fully-connected layers."""
     hidden_activation = getattr(nn, hidden_activation)
@@ -228,7 +226,7 @@ def make_mlp(
     if output_activation is not None:
         if layer_norm:
             layers.append(nn.LayerNorm(sizes[-1]))
-        layers.append(output_activation())
+        layers.append(output_activation)
     return nn.Sequential(*layers)
 
 
@@ -236,7 +234,6 @@ def make_mlp(
 
 
 def graph_model_evaluation(model, trainer, fom="eff", fixed_value=0.96):
-
     # Seed solver with one batch, then run on full test dataset
     sol = root(
         evaluate_set_root,
@@ -262,7 +259,6 @@ def evaluate_set_root(edge_cut, model, trainer, goal=0.96, fom="eff"):
 
 
 def get_metrics(test_results):
-
     ps = [result["preds"].sum() for result in test_results[1:]]
     ts = [result["truth"].sum() for result in test_results[1:]]
     tps = [(result["preds"] * result["truth"]).sum() for result in test_results[1:]]

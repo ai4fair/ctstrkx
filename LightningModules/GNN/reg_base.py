@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 from pytorch_lightning import LightningModule
 from torch_geometric.loader import DataLoader
-from .utils import load_dataset
+from .utils.gnn_utils import load_dataset
 
 
 class RegressionBase(LightningModule):
