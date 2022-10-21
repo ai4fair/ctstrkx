@@ -1,25 +1,15 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-
 # TODO: gnn_base.py (a.k.a v1.1) is exactly the same as gnn_base_v1.py, only difference 
 # is how to fetch data from "feature_store". Here, "split_datasets" do the heavy work.
 
-
-import sys, os
-import logging
-import numpy as np
-
-import pytorch_lightning as pl
-from pytorch_lightning import LightningModule
-
+import os
 import torch
+import numpy as np
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
-from torch.nn import Linear
-
-from datetime import timedelta
-
+import pytorch_lightning as pl
 from .utils.data_utils import split_datasets
 from sklearn.metrics import roc_auc_score, accuracy_score
 
@@ -30,32 +20,30 @@ def roc_auc_score_robust(y_true, y_pred):
         return accuracy_score(y_true, np.rint(y_pred))
     else:
         return roc_auc_score(y_true, y_pred)
-        
 
-class GNNBase(LightningModule):
+
+class GNNBase(pl.LightningModule):
     def __init__(self, hparams):
         super().__init__()
         """Initialise LightningModule to scan different GNN training regimes"""
-        
+
         # Assign hyperparameters
         self.save_hyperparameters(hparams)
-        
+
         # Set workers from hparams
         self.n_workers = (
             self.hparams["n_workers"]
             if "n_workers" in self.hparams
             else len(os.sched_getaffinity(0))
         )
-        
+
         # Instance Variables
         self.trainset, self.valset, self.testset = None, None, None
-    
-    
+
     def setup(self, stage):
         if self.trainset is None:
             self.trainset, self.valset, self.testset = split_datasets(**self.hparams)
-    
-    
+
     # Data Loaders
     def train_dataloader(self):
         if self.trainset is not None:
@@ -81,7 +69,6 @@ class GNNBase(LightningModule):
         else:
             return None
 
-    
     # Configure Optimizer & Scheduler
     def configure_optimizers(self):
         """Configure the Optimizer and Scheduler"""
@@ -107,13 +94,12 @@ class GNNBase(LightningModule):
         ]
         return optimizer, scheduler
 
-
     # 1 - Helper Function
     def get_input_data(self, batch):
 
         if self.hparams["cell_channels"] > 0:
             input_data = torch.cat(
-                [batch.cell_data[:, : self.hparams["cell_channels"]], batch.x], axis=-1
+                [batch.cell_data[:, :self.hparams["cell_channels"]], batch.x], dim=-1
             )
             input_data[input_data != input_data] = 0
         else:
@@ -122,11 +108,10 @@ class GNNBase(LightningModule):
 
         return input_data
 
-
     # 2 - Helper Function
     def handle_directed(self, batch, edge_sample, truth_sample):
 
-        edge_sample = torch.cat([edge_sample, edge_sample.flip(0)], dim=-1)        
+        edge_sample = torch.cat([edge_sample, edge_sample.flip(0)], dim=-1)
         truth_sample = truth_sample.repeat(2)
 
         if ("directed" in self.hparams.keys()) and self.hparams["directed"]:
@@ -135,7 +120,6 @@ class GNNBase(LightningModule):
             truth_sample = truth_sample[direction_mask]
 
         return edge_sample, truth_sample
-
 
     # 3 - Helper Function
     def log_metrics(self, score, preds, truth, batch, loss):
@@ -148,10 +132,10 @@ class GNNBase(LightningModule):
 
         eff = edge_true_positive.clone().detach() / max(1, edge_true)
         pur = edge_true_positive.clone().detach() / max(1, edge_positive)
-        
+
         # special function to handle classes in y_true
         auc = roc_auc_score_robust(truth.bool().cpu().detach(), score.cpu().detach())
-        
+
         current_lr = self.optimizers().param_groups[0]["lr"]
         self.log_dict(
             {
@@ -162,7 +146,6 @@ class GNNBase(LightningModule):
                 "current_lr": current_lr,
             }, on_step=False, on_epoch=True, prog_bar=False, batch_size=10240
         )
-
 
     # Train Step
     def training_step(self, batch, batch_idx):
@@ -176,7 +159,7 @@ class GNNBase(LightningModule):
         truth = (
             batch.y_pid.bool() if "pid" in self.hparams["regime"] else batch.y.bool()
         )
-        
+
         edge_sample, truth_sample = self.handle_directed(batch, batch.edge_index, truth)
         input_data = self.get_input_data(batch)
         output = self(input_data, edge_sample).squeeze()
@@ -185,7 +168,7 @@ class GNNBase(LightningModule):
             manual_weights = batch.weights
         else:
             manual_weights = None
-        
+
         loss = F.binary_cross_entropy_with_logits(
             output, truth_sample.float(), weight=manual_weights, pos_weight=weight
         )
@@ -194,10 +177,9 @@ class GNNBase(LightningModule):
 
         return loss
 
-
     # Shared Evaluation for Validation and Test Steps
     def shared_evaluation(self, batch, batch_idx, log=False):
-        
+
         weight = (
             torch.tensor(self.hparams["weight"])
             if ("weight" in self.hparams)
@@ -207,7 +189,7 @@ class GNNBase(LightningModule):
         truth = (
             batch.y_pid.bool() if "pid" in self.hparams["regime"] else batch.y.bool()
         )
-        
+
         edge_sample, truth_sample = self.handle_directed(batch, batch.edge_index, truth)
         input_data = self.get_input_data(batch)
         output = self(input_data, edge_sample).squeeze()
@@ -216,7 +198,7 @@ class GNNBase(LightningModule):
             manual_weights = batch.weights
         else:
             manual_weights = None
-        
+
         loss = F.binary_cross_entropy_with_logits(
             output, truth_sample.float(), weight=manual_weights, pos_weight=weight
         )
@@ -224,12 +206,11 @@ class GNNBase(LightningModule):
         # Edge filter performance
         score = torch.sigmoid(output)
         preds = score > self.hparams["edge_cut"]
-        
+
         if log:
             self.log_metrics(score, preds, truth_sample, batch, loss)
 
         return {"loss": loss, "score": score, "preds": preds, "truth": truth_sample}
-
 
     # Validation Step
     def validation_step(self, batch, batch_idx):
@@ -238,7 +219,6 @@ class GNNBase(LightningModule):
 
         return outputs["loss"]
 
-
     # Test Step
     def test_step(self, batch, batch_idx):
 
@@ -246,18 +226,17 @@ class GNNBase(LightningModule):
 
         return outputs
 
-
     # Optimizer Step
     def optimizer_step(
-        self,
-        epoch,
-        batch_idx,
-        optimizer,
-        optimizer_idx=0,  # ADAK: optimizer_idx to optimizer_idx=0
-        optimizer_closure=None,
-        on_tpu=False,
-        using_native_amp=False,
-        using_lbfgs=False,
+            self,
+            epoch,
+            batch_idx,
+            optimizer,
+            optimizer_idx=0,  # ADAK: optimizer_idx to optimizer_idx=0
+            optimizer_closure=None,
+            on_tpu=False,
+            using_native_amp=False,
+            using_lbfgs=False,
     ):
         # warm up lr
         if (self.hparams["warmup"] is not None) and (
