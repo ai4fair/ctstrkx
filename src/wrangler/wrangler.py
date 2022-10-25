@@ -84,8 +84,8 @@ def fit_road(G, road):
     """use a linear function to fit phi as a function of z."""
     road_chi2 = []
     for path in road:
-        z   = np.array([G.node[i]['pos'][2] for i in path[:-1]])
-        phi = np.array([G.node[i]['pos'][1] for i in path[:-1]])
+        z   = np.array([G.nodes[i]['pos'][2] for i in path[:-1]])  # ADAK: G.node (v1.x) to G.nodes (v2.x)
+        phi = np.array([G.nodes[i]['pos'][1] for i in path[:-1]])  # ADAK: G.node (v1.x) to G.nodes (v2.x)
         if len(z) > 1:
             _, _, diff = utils_fit.poly_fit_phi(z, phi)
             road_chi2.append(np.sum(diff)/len(z))
