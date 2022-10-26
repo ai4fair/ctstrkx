@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from tqdm import tqdm
-from torch_geometriqc.data import Dataset
+from torch_geometric.data import Dataset
 # from idlelib.pyshell import root
 
 # Find current device.
