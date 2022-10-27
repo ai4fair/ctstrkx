@@ -1,3 +1,8 @@
+"""
+TODO:
+
+- Change manual scipy sparse conversion to PyG version for brevity
+"""
 
 import os
 import logging
@@ -8,10 +13,8 @@ import scipy.sparse as sp
 import numpy as np
 from torch_geometric.utils import to_scipy_sparse_matrix
 
-# TODO: Change manual scipy sparse conversion to PyG version for brevity
-def label_graph(
-    input_file: str, output_dir: str, edge_cut: float = 0.5, **kwargs
-) -> None:
+
+def label_graph(input_file: str, output_dir: str, edge_cut: float = 0.5, **kwargs) -> None:
 
     """Loads an input_file and outputs a segmented (i.e. labelled) graph.
 
@@ -33,11 +36,18 @@ def label_graph(
             # apply cut
             passing_edges = graph.edge_index[:, graph.scores > edge_cut]
 
+            # get connected components
+            sparse_edges = sp.coo_matrix(
+                (np.ones(passing_edges.shape[1]), passing_edges.cpu().numpy()),
+                shape=(len(graph.x), len(graph.x)),
+            )
+            connected_components = scigraph.connected_components(sparse_edges)[1]
+
             # attach labels to data
-            graph.labels = label_segments(passing_edges, len(graph.x))
+            graph.labels = connected_components
 
             with open(output_file, "wb") as pickle_file:
-                torch.save(data, pickle_file)
+                torch.save(graph, pickle_file)
 
         else:
             logging.info("{} already exists".format(output_file))
@@ -45,14 +55,3 @@ def label_graph(
     except Exception as inst:
         print("File:", input_file, "had exception", inst)
 
-
-def label_segments(input_edges, num_nodes):
-
-    # get connected components
-    sparse_edges = sp.coo_matrix(
-        (np.ones(input_edges.shape[1]), input_edges.cpu().numpy()),
-        shape=(num_nodes, num_nodes),
-    )
-    connected_components = scigraph.connected_components(sparse_edges)[1]
-
-    return torch.from_numpy(connected_components).type_as(input_edges)

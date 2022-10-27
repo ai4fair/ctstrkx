@@ -21,7 +21,7 @@ from sklearn.cluster import DBSCAN
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
-def tracks_from_cc (hit_id, score, senders, receivers, edge_score_cut=0.,
+def label_graph (hit_id, score, senders, receivers, edge_score_cut=0.,
                     epsilon=0.25, min_samples=2, **kwargs):
     
     """Use CC/DBSCAN to build tracks after GNN stage. Important variables 
@@ -86,7 +86,7 @@ def process(filename, output_dir, score_name, **kwargs):
     hit_id = gnn_data.hid
     
     # predicted tracks from the GNN stage
-    predicted_tracks = tracks_from_cc (hit_id, score, senders, receivers, **kwargs)
+    predicted_tracks = label_graph (hit_id, score, senders, receivers, **kwargs)
  
     # save reconstructed tracks into a file
     # PyTorch convention is to save tensors using .pt file extension
