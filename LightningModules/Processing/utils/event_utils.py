@@ -246,7 +246,7 @@ def prepare_event(
             logging.info("Preparing event {}".format(evtid))
             
             # feature scale for X=[r,phi,z]
-            feature_scale = [100, np.pi, 1]
+            feature_scale = [100, np.pi, 100]  #ADAK: ir has same dim as of 'r', 'z'
             
             # build event
             (
