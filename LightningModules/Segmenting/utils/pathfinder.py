@@ -1,11 +1,16 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+import numpy as np
+import networkx as nx
+
 """
 Loop over all hits;
 for each hit, find next hit that has maximum weight among all available edge candidates
 """
-import numpy as np
-import networkx as nx
 
-from .utils_fit import poly_fit, poly_val
+# FIXME: What is longest_track() ???
+
 
 def get_tracks(graph, weights, hit_ids, weight_cutoff):
     hits_in_tracks = []
@@ -24,7 +29,7 @@ def get_tracks(graph, weights, hit_ids, weight_cutoff):
             continue
 
         a_track = [hit_id]
-        while(True):
+        while True:
             # for this hit index (idx),
             # find its outgoing hits that could form a track
             hit_out = graph.Ro[idx]
@@ -54,6 +59,10 @@ def get_tracks(graph, weights, hit_ids, weight_cutoff):
                 break
         all_tracks.append(a_track)
     return all_tracks
+
+
+def longest_track(G, node, used_nodes, th, feature_name):
+    pass
 
 
 def get_tracks2(G, th=0.5, feature_name='solution'):

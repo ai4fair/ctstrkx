@@ -1,18 +1,12 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+# CCL
+from .utils.ccl import label_graph_ccl
 
-# From Exa.TrkX NeurIPS19
-import itertools
-def pairwise(iterable):
-  """s -> (s0,s1), (s1,s2), (s2, s3), ..."""
-  a, b = itertools.tee(iterable)
-  next(b, None)
-  return zip(a, b)
-  
+# DBSCAN
+from .utils.dbscan import label_graph_dbscan
 
-# Connected Components Labeling
-from .ccl.cc import tracks_from_cc
+# Wrangler
+from .utils.wrangler import get_tracks
 
-# Path Finding
-from .wrangler.wrangler import get_tracks

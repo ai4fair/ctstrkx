@@ -1,11 +1,10 @@
+#!/usr/bin/env python
+# coding: utf-8
 
-from . import utils_fit
-from .. import pairwise
-
-import networkx as nx
 import numpy as np
-
 from functools import partial
+from .utils_fit import pairwise, poly_fit_phi
+
 
 def find_next_hits(G, pp, used_hits, th=0.1, th_re=0.8, feature_name='solution'):
     """G is the graph, path is previous hits."""
@@ -47,7 +46,7 @@ def build_roads(G, ss, next_hit_fn, used_hits):
     # get started
     next_hits = next_hit_fn(G, ss, used_hits)
     if next_hits is None:
-        return [(ss,None)]
+        return [(ss, None)]
     path = []
     for hit in next_hits:
         path.append((ss, hit))
@@ -84,16 +83,15 @@ def fit_road(G, road):
     """use a linear function to fit phi as a function of z."""
     road_chi2 = []
     for path in road:
-        z   = np.array([G.nodes[i]['pos'][2] for i in path[:-1]])  # ADAK: G.node (v1.x) to G.nodes (v2.x)
-        phi = np.array([G.nodes[i]['pos'][1] for i in path[:-1]])  # ADAK: G.node (v1.x) to G.nodes (v2.x)
+        z = np.array([G.nodes[i]['x'][2] for i in path[:-1]])  # ADAK: G.node (v1.x) to G.nodes (v2.x)
+        phi = np.array([G.nodes[i]['x'][1] for i in path[:-1]])  # ADAK: 'pos' to 'x'
         if len(z) > 1:
-            _, _, diff = utils_fit.poly_fit_phi(z, phi)
+            _, _, diff = poly_fit_phi(z, phi)
             road_chi2.append(np.sum(diff)/len(z))
         else:
             road_chi2.append(1)
 
     return road_chi2
-
 
 
 def chose_a_road(road, diff):

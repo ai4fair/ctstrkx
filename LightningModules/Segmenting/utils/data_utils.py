@@ -1,23 +1,15 @@
-import os, sys
-import logging
+#!/usr/bin/env python
+# coding: utf-8
 
+import os
 import torch.nn as nn
 import torch
 import pandas as pd
 import numpy as np
+from .ccl.ccl import label_segments
 
-from .segmentation_utils import labelSegments
 
-
-def load_dataset(
-    input_subdir="",
-    num_events=10,
-    pt_background_cut=0,
-    pt_signal_cut=0,
-    noise=False,
-    triplets=False,
-    **kwargs
-):
+def load_dataset(input_subdir="", num_events=10, **kwargs):
     if input_subdir is not None:
         all_events = os.listdir(input_subdir)
         all_events = sorted([os.path.join(input_subdir, event) for event in all_events])
@@ -38,9 +30,7 @@ def process_data(events):
 
     # Handle event in batched form
     for i, event in enumerate(events):
-
-        event.labels = labelSegments(event.edge_index[:, event.y.bool()], len(event.x))
-
+        event.labels = label_segments(event.edge_index[:, event.y.bool()], len(event.x))
         event.long_mask, long_labels, long_pid = get_long_segments(event)
         event.label_pairs, event.pid_pairs = get_segment_pairs(
             event, long_labels, long_pid
@@ -132,5 +122,5 @@ def make_mlp(
             layers.append(nn.LayerNorm(sizes[-1]))
         if batch_norm:
             layers.append(nn.BatchNorm1d(sizes[i + 1]))
-        layers.append(output_activation())
+        layers.append(output_activation)
     return nn.Sequential(*layers)
