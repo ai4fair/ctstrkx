@@ -42,7 +42,7 @@ class GNNTelemetry(Callback):
 
         """Get the relevant outputs from each batch"""
 
-        self.preds.append(outputs["preds"].cpu())
+        self.preds.append(outputs["score"].cpu())  # ADAK: preds to score
         self.truth.append(outputs["truth"].cpu())
 
     def on_test_end(self, trainer, pl_module):

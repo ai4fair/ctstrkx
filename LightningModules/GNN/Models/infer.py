@@ -38,7 +38,7 @@ class GNNMetrics(Callback):
 
         """Get the relevant outputs from each batch"""
 
-        self.preds.append(outputs["preds"].cpu())
+        self.preds.append(outputs["score"].cpu())  # ADAK: preds to score
         self.truth.append(outputs["truth"].cpu())
 
     def on_test_end(self, trainer, pl_module):
@@ -144,7 +144,7 @@ class GNNMetrics_V2(Callback):
 
         """Get the relevant outputs from each batch"""
 
-        self.preds.append(outputs["preds"])
+        self.preds.append(outputs["score"])  # ADAK: preds to score
         self.truth.append(outputs["truth"])
 
     def on_test_end(self, trainer, pl_module):
@@ -272,7 +272,7 @@ class GNNTelemetry(Callback):
 
         """Get the relevant outputs from each batch"""
 
-        self.preds.append(outputs["preds"])
+        self.preds.append(outputs["score"])  # ADAK: preds to score
         self.truth.append(outputs["truth"])
 
     def on_test_end(self, trainer, pl_module):
