@@ -17,6 +17,7 @@ modulewise: True            # True Edge List
 inputedges: True            # Input Edge List
 filtering: True             # Input Graphs in adjacent (all) sectors --> true (false) 
 
+cell_info: True
 
 # if inputedges=True:
 # then 'edge_index' will be built in the Processing stage, so one can use GNN stage right after that i.e. skipping Embedding & Filtering
