@@ -9,6 +9,8 @@ import scipy.sparse as sp
 import scipy.sparse.csgraph as scigraph
 from torch_geometric.utils import to_scipy_sparse_matrix
 
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 
 def label_graph_ccl(
         input_file: str, output_dir: str, edge_cut: float = 0.5, overwrite: bool = True, **kwargs
@@ -32,17 +34,20 @@ def label_graph_ccl(
         if not os.path.exists(output_file) or overwrite:
 
             logging.info("Preparing event {}".format(output_file))
-            graph = torch.load(input_file, map_location="cpu")
-
+            graph = torch.load(input_file, map_location=device)
+            
+            # score has twice the size of edge_index (flip(0) was used)
+            scores = graph.scores[:graph.edge_index.shape[1]] 
+            
             # apply cut
-            passing_edges = graph.edge_index[:, graph.scores > edge_cut]
+            passing_edges = graph.edge_index[:, scores > edge_cut]
 
             # get connected components
             sparse_edges = to_scipy_sparse_matrix(passing_edges)
-            connected_components = scigraph.connected_components(sparse_edges)[1]
+            labels = scigraph.connected_components(sparse_edges)[1]
 
             # attach labels to data
-            graph.labels = connected_components
+            graph.labels = torch.from_numpy(labels).type_as(passing_edges)
 
             with open(output_file, "wb") as pickle_file:
                 torch.save(graph, pickle_file)
@@ -75,10 +80,13 @@ def label_graph(
         if not os.path.exists(output_file) or overwrite:
 
             logging.info("Preparing event {}".format(output_file))
-            graph = torch.load(input_file, map_location="cpu")
+            graph = torch.load(input_file, map_location=device)
 
+            # score has twice the size of edge_index (flip(0) was used)
+            scores = graph.scores[:graph.edge_index.shape[1]] 
+            
             # apply cut
-            passing_edges = graph.edge_index[:, graph.scores > edge_cut]
+            passing_edges = graph.edge_index[:, scores > edge_cut]
 
             # attach labels to data
             graph.labels = label_segments(passing_edges, len(graph.x))
@@ -96,6 +104,8 @@ def label_graph(
 def label_segments(input_edges, num_nodes):
 
     # get connected components
+    # sparse_edges = to_scipy_sparse_matrix(input_edges)
+    
     sparse_edges = sp.coo_matrix(
         (np.ones(input_edges.shape[1]), input_edges.cpu().numpy()),
         shape=(num_nodes, num_nodes),

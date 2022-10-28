@@ -1,7 +1,11 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import os
+import logging
+import torch
 import numpy as np
+from torch_geometric.utils import to_networkx, from_networkx
 from functools import partial
 from .utils_fit import pairwise, poly_fit_phi
 
@@ -14,11 +18,11 @@ def find_next_hits(G, pp, used_hits, th=0.1, th_re=0.8, feature_name='solution')
         return None
 
     # weights = [G.edges[(pp, i)][feature_name][0] for i in nbrs]
-    
+
     # FIXME (done): In the DiGraph from PyD::to_networkx(PyG::Data,...), each
     # edge has a score and truth (y_pid), which is interpretted as the
     # weight of an edge. From this DiGraph structure one can find it as:
-     
+
     weights = [G.edges[(pp, i)][feature_name] for i in nbrs]
 
     if max(weights) < th:
@@ -87,7 +91,7 @@ def fit_road(G, road):
         phi = np.array([G.nodes[i]['x'][1] for i in path[:-1]])  # ADAK: 'pos' to 'x'
         if len(z) > 1:
             _, _, diff = poly_fit_phi(z, phi)
-            road_chi2.append(np.sum(diff)/len(z))
+            road_chi2.append(np.sum(diff) / len(z))
         else:
             road_chi2.append(1)
 
@@ -105,7 +109,7 @@ def chose_a_road(road, diff):
     return res
 
 
-def get_tracks(G, th=0.1, th_re=0.8, feature_name='solution', with_fit=True):
+def get_tracks(G, th=0.1, th_re=0.8, feature_name='scores', with_fit=True):
     """
     Don't use nx.MultiGraphs
     """
@@ -116,7 +120,7 @@ def get_tracks(G, th=0.1, th_re=0.8, feature_name='solution', with_fit=True):
         if node in used_nodes:
             continue
         road = build_roads(G, node, next_hit_fn, used_nodes)
-        diff = fit_road(G, road) if with_fit else [0.]*len(road)
+        diff = fit_road(G, road) if with_fit else [0.] * len(road)
         a_road = chose_a_road(road, diff)
 
         if len(a_road) < 3:
@@ -130,3 +134,35 @@ def get_tracks(G, th=0.1, th_re=0.8, feature_name='solution', with_fit=True):
         used_nodes += list(sub.nodes())
 
     return sub_graphs
+
+
+def label_graph_wrangler(
+        input_file: str, output_dir: str, edge_cut: float = 0.5, overwrite: bool = True, **kwargs
+) -> None:
+
+    try:
+
+        output_file = os.path.join(output_dir, os.path.split(input_file)[-1])
+
+        if not os.path.exists(output_file) or overwrite:
+
+            logging.info("Preparing event {}".format(output_file))
+            graph = torch.load(input_file, map_location="cpu")
+
+            # to NetworkX
+            G = to_networkx(graph, node_attrs=['x'], edge_attrs=['scores', 'y_pid'])
+
+            # build tracks
+            pred_graphs = get_tracks(G, th=0.1, th_re=0.8, feature_name='scores', with_fit=False)
+
+            # list subgraphs as pyg data
+            pyg_graph = [from_networkx(graph) for graph in pred_graphs]
+
+            with open(output_file, "wb") as pickle_file:
+                torch.save(pyg_graph, pickle_file)
+
+        else:
+            logging.info("{} already exists".format(output_file))
+
+    except Exception as inst:
+        print("File:", input_file, "had exception", inst)

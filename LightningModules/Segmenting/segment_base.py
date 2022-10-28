@@ -26,7 +26,11 @@ class SegmentBase(LightningDataModule):
         self.input_dir = self.hparams["input_dir"]
         self.output_dir = self.hparams["output_dir"]
         self.n_files = self.hparams["n_files"]
-
+        
+        self.method = (
+            ccl if "seg_method" not in self.hparams else self.hparams["seg_method"]
+        )
+        
         self.n_tasks = (
             1 if "n_tasks" not in self.hparams else self.hparams["n_tasks"]
         )

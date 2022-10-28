@@ -7,7 +7,9 @@ from functools import partial
 from tqdm.contrib.concurrent import process_map
 
 from ..segment_base import SegmentBase
-from ..utils.segmentation_utils import label_graph
+from ..utils.ccl import label_graph_ccl
+from ..utils.dbscan import label_graph_dbscan
+from ..utils.wrangler import label_graph_wrangler
 
 
 # Segmentation data module specific to the TrackML pipeline
@@ -23,9 +25,20 @@ class TrackMLSegment(SegmentBase):
             for file in os.listdir(self.hparams["input_dir"])
         ][: self.n_files]
         all_files = np.array_split(all_files, self.n_tasks)[self.task]
-
+        
         os.makedirs(self.output_dir, exist_ok=True)
         print("Writing outputs to " + self.output_dir)
-
+        
+        # ADAK: Select a Labelling Method
+        if self.method == 'ccl':
+            label_graph = label_graph_ccl
+        elif self.method == 'dbscan':
+            label_graph = label_graph_dbscan
+        else:
+            label_graph = label_graph_wrangler
+        
+        print("Labelling method is " + label_graph.__name__)
+                
         process_func = partial(label_graph, **self.hparams)
         process_map(process_func, all_files, max_workers=self.n_workers)
+
