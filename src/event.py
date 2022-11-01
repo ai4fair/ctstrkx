@@ -213,14 +213,10 @@ def Compose_Event(event_prefix="", noise=False, skewed=True):
     # first merge truth & particles on particle_id, assuming
     if noise:
         # runs if noise=True
-        truth = truth.merge(
-            particles[["particle_id", "vx", "vy", "vz"]], on="particle_id", how="left"
-        )
+        truth = truth.merge(particles, on="particle_id", how="left")
     else:
         # runs if noise=False
-        truth = truth.merge(
-            particles[["particle_id", "vx", "vy", "vz"]], on="particle_id", how="inner"
-        )
+        truth = truth.merge(particles, on="particle_id", how="inner")
 
     # assign pt (from tpx & tpy ???) and add to truth
     truth = truth.assign(pt=np.sqrt(truth.tpx ** 2 + truth.tpy ** 2))
