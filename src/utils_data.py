@@ -3,12 +3,13 @@
 import os
 import glob
 import pandas as pd
-# import dask.dataframe as dd
+import dask.dataframe as dd
 
 
 # Preprocessing Tasks
 def preprocess(hits):
     """Function to perform certain tasks once an event is loaded"""
+    
     # Start: Preprocessing Tasks
     # hits = hits.drop(['z', 'tube_id','depcharge', 'tx', 'ty', 'tz','px','py','pz'], axis=1)
     # hits = event[['skewed', 'layer_id']]       # select only 2 columns
@@ -27,63 +28,66 @@ def preprocess(hits):
     # hits.loc[hits["layer"].isin([2, 3])].head()
     # hits.loc[~hits["layer"].isin([2, 3])].head()
     # hits.loc[(hits["cluster_id"]==8) & hits["layer"].isin([2, 3])].head()
+    
     return hits
 
 
 # Load single event using event_prefix
-def get_event(path=None, event_id=0):
+def get_event(input_dir=None, event_id=0):
     """Load Single CSV/Event File"""
     
     event_prefix = str('event{!s}'.format(format(event_id, '010d')))
-    prefix = path + event_prefix
+    prefix = input_dir + event_prefix
     
-    hits = pd.read_csv(prefix + '-hits.csv')
-    tubes = pd.read_csv(prefix + '-tubes.csv')
-    particles = pd.read_csv(prefix + '-particles.csv')
-    truth = pd.read_csv(prefix + '-truth.csv')
+    hits = pd.read_csv(prefix + "-hits.csv")
+    cells = pd.read_csv(prefix + "-cells.csv")
+    particles = pd.read_csv(prefix + "-particles.csv")
+    truth = pd.read_csv(prefix + "-truth.csv")
     
     return hits, tubes, particles, truth
 
 
 # Load all events using Pandas
-def pandas_events(path="None"):
+def pandas_events(input_dir="None"):
     """Load multiple CSV files into Pandas"""
+    
     # map(function, iterable) == map(pd.read_csv, files) where variable
-    # the 'files = glob.glob(os.path.join(path+"*-hits.csv"))' is a list
-    hits = pd.concat(map(pd.read_csv, glob.glob(os.path.join(path + "*-hits.csv"))))
-    tubes = pd.concat(map(pd.read_csv, glob.glob(os.path.join(path + "*-tubes.csv"))))
-    particles = pd.concat(map(pd.read_csv, glob.glob(os.path.join(path + "*-particles.csv"))))
-    truth = pd.concat(map(pd.read_csv, glob.glob(os.path.join(path + "*-truth.csv"))))
+    # the 'files = glob.glob(os.path.join(input_dir+"*-hits.csv"))' is a list
+    hits = pd.concat(map(pd.read_csv, glob.glob(os.path.join(input_dir + "*-hits.csv"))))
+    cells = pd.concat(map(pd.read_csv, glob.glob(os.path.join(input_dir + "*-cells.csv"))))
+    particles = pd.concat(map(pd.read_csv, glob.glob(os.path.join(input_dir + "*-particles.csv"))))
+    truth = pd.concat(map(pd.read_csv, glob.glob(os.path.join(input_dir + "*-truth.csv"))))
 
-    return hits, tubes, particles, truth
+    return hits, cells, particles, truth
 
 
 # Load all events using Dask
-def dask_events(path="None"):
-    """Load multiple CSV files into Dask"""
-    pass
+def dask_events(input_dir="None"):
+    """Load multiple CSV files using Dask"""
     
-    # load multiple files at once
-    # hits = dd.read_csv(path + '*-hits.csv')
-    # truth = dd.read_csv(path + '*-truth.csv')
-    # particles = dd.read_csv(path + '*-particles.csv')
-    # tubes = dd.read_csv(path + '*-tubes.csv')
-
+    # load multiple CSVs at once
+    hits = dd.read_csv(input_dir + "*-hits.csv")
+    cells = dd.read_csv(input_dir + "*-cells.csv")
+    particles = dd.read_csv(input_dir + "*-particles.csv")
+    truth = dd.read_csv(input_dir + "*-truth.csv")
+    
     # convert to pandas format, if required.
     # hits = hits.compute()
     # truth = truth.compute()
     # particles = particles.compute()
     # tubes = tubes.compute()
-
-    # return hits, tubes, particles, truth
-
+    
+    return hits, cells, particles, truth
+    
 
 def get_geometry(events=None):
     """
     Pass all events, it will extract (x,y,z) values based on
     unique tube_ids. Sort it, dump it as a csv file.
     """
+    
     df = events.drop_duplicates(subset='tube_id', keep="first")
     df = df[['x', 'y', 'z', 'skewed', 'tube_id', 'layer_id', 'sector_id']]
     df = df.sort_values(['tube_id', 'layer_id'])
     df.to_csv('stt.csv', encoding='utf-8', index=False)
+
