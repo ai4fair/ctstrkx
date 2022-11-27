@@ -15,6 +15,36 @@ if device == "cuda":
     import cupy as cp
 
 
+# ---------------------- Dense Network
+def make_mlp(
+        input_size,
+        sizes,
+        hidden_activation="ReLU",
+        output_activation="ReLU",
+        layer_norm=False,
+):
+    """Construct an MLP with specified fully-connected layers."""
+    hidden_activation = getattr(nn, hidden_activation)
+    if output_activation is not None:
+        output_activation = getattr(torch, output_activation) # FIXME:: nn >> torch for sigmoid()
+    layers = []
+    n_layers = len(sizes)
+    sizes = [input_size] + sizes
+    # Hidden layers
+    for i in range(n_layers - 1):
+        layers.append(nn.Linear(sizes[i], sizes[i + 1]))
+        if layer_norm:
+            layers.append(nn.LayerNorm(sizes[i + 1]))
+        layers.append(hidden_activation())
+    # Final layer
+    layers.append(nn.Linear(sizes[-2], sizes[-1]))
+    if output_activation is not None:
+        if layer_norm:
+            layers.append(nn.LayerNorm(sizes[-1]))
+        layers.append(output_activation())
+    return nn.Sequential(*layers)
+
+
 # ---------------------- Data Processing I
 def load_dataset(
         input_subdir="",
@@ -198,41 +228,7 @@ def hard_eta_edge_slice(delta_eta, batch):
     return subset_edges_ind
 
 
-# ---------------------- Convenience Utilities
-
-# ADAK: Modification here
-def make_mlp(
-        input_size,
-        sizes,
-        hidden_activation="ReLU",
-        output_activation="ReLU",
-        layer_norm=False,
-):
-    """Construct an MLP with specified fully-connected layers."""
-    hidden_activation = getattr(nn, hidden_activation)
-    if output_activation is not None:
-        output_activation = getattr(torch, output_activation) # FIXME:: nn >> torch for sigmoid()
-    layers = []
-    n_layers = len(sizes)
-    sizes = [input_size] + sizes
-    # Hidden layers
-    for i in range(n_layers - 1):
-        layers.append(nn.Linear(sizes[i], sizes[i + 1]))
-        if layer_norm:
-            layers.append(nn.LayerNorm(sizes[i + 1]))
-        layers.append(hidden_activation())
-    # Final layer
-    layers.append(nn.Linear(sizes[-2], sizes[-1]))
-    if output_activation is not None:
-        if layer_norm:
-            layers.append(nn.LayerNorm(sizes[-1]))
-        layers.append(output_activation)
-    return nn.Sequential(*layers)
-
-
 # ---------------------- Performance Utilities
-
-
 def graph_model_evaluation(model, trainer, fom="eff", fixed_value=0.96):
     # Seed solver with one batch, then run on full test dataset
     sol = root(
