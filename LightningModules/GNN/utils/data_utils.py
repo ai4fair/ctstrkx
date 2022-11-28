@@ -29,7 +29,7 @@ def split_datasets(
     
     # random seed
     if train_split is None:
-        train_split = [100, 10, 10]
+        train_split = kwargs["datatype_split"]
     torch.manual_seed(seed)
     
     # load data
