@@ -6,3 +6,5 @@ The _**LightingModules**_ are expected to run in sequence, at least for the firs
 - _**GNN**_: Edge Classification
 - _**Segmenting**_: Create Segments using Edge Scores from GNN
 
+
+NOTE: Processing, GNN, Segmenting are advance from CTD2022 repo.
