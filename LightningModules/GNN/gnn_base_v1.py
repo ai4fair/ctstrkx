@@ -1,20 +1,14 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import sys, os
-import logging
-import numpy as np
+# NOTE: gnn_base_v1 is exactly same as gnn_base except for setup()
 
-import pytorch_lightning as pl
-from pytorch_lightning import LightningModule
-
+import os
 import torch
+import numpy as np
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
-from torch.nn import Linear
-
-from datetime import timedelta
-
+import pytorch_lightning as pl
 from .utils.gnn_utils import load_dataset
 from sklearn.metrics import roc_auc_score, accuracy_score
 
@@ -27,7 +21,7 @@ def roc_auc_score_robust(y_true, y_pred):
         return roc_auc_score(y_true, y_pred)
         
 
-class GNNBase(LightningModule):
+class GNNBase(pl.LightningModule):
     def __init__(self, hparams):
         super().__init__()
         """Initialise LightningModule to scan different GNN training regimes"""
@@ -42,8 +36,10 @@ class GNNBase(LightningModule):
             else len(os.sched_getaffinity(0))
         )
 
-
-    def setup(self, stage):
+        # Instance Variables
+        self.trainset, self.valset, self.testset = None, None, None
+        
+    def setup(self, stage="fit"):
     
         # Handle any subset of [train, val, test] data split, assuming that ordering
         input_subdirs = [None, None, None]
@@ -60,10 +56,8 @@ class GNNBase(LightningModule):
             for i, input_subdir in enumerate(input_subdirs)
         ]
 
-
     def setup_data(self):
         self.setup(stage="fit")
-
 
     # Data Loaders
     def train_dataloader(self):
@@ -74,7 +68,6 @@ class GNNBase(LightningModule):
                 self.trainset, batch_size=1, num_workers=self.n_workers
             )  # , pin_memory=True, persistent_workers=True)
 
-
     def val_dataloader(self):
         if self.valset is not None:
             return DataLoader(
@@ -83,7 +76,6 @@ class GNNBase(LightningModule):
         else:
             return None
 
-
     def test_dataloader(self):
         if self.testset is not None:
             return DataLoader(
@@ -91,7 +83,6 @@ class GNNBase(LightningModule):
             )  # , pin_memory=True, persistent_workers=True)
         else:
             return None
-
 
     # Configure Optimizer & Scheduler
     def configure_optimizers(self):
@@ -118,13 +109,12 @@ class GNNBase(LightningModule):
         ]
         return optimizer, scheduler
 
-
     # 1 - Helper Function
     def get_input_data(self, batch):
 
         if self.hparams["cell_channels"] > 0:
             input_data = torch.cat(
-                [batch.cell_data[:, : self.hparams["cell_channels"]], batch.x], axis=-1
+                [batch.cell_data[:, :self.hparams["cell_channels"]], batch.x], dim=-1
             )
             input_data[input_data != input_data] = 0
         else:
@@ -132,7 +122,6 @@ class GNNBase(LightningModule):
             input_data[input_data != input_data] = 0
 
         return input_data
-
 
     # 2 - Helper Function
     def handle_directed(self, batch, edge_sample, truth_sample):
@@ -146,7 +135,6 @@ class GNNBase(LightningModule):
             truth_sample = truth_sample[direction_mask]
 
         return edge_sample, truth_sample
-
 
     # 3 - Helper Function
     def log_metrics(self, score, preds, truth, batch, loss):
@@ -173,7 +161,6 @@ class GNNBase(LightningModule):
                 "current_lr": current_lr,
             }, on_step=False, on_epoch=True, prog_bar=False, batch_size=10240
         )
-
 
     # Train Step
     def training_step(self, batch, batch_idx):
@@ -204,7 +191,6 @@ class GNNBase(LightningModule):
         self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=False, batch_size=10240)
 
         return loss
-
 
     # Shared Evaluation for Validation and Test Steps
     def shared_evaluation(self, batch, batch_idx, log=False):
@@ -241,7 +227,6 @@ class GNNBase(LightningModule):
 
         return {"loss": loss, "score": score, "preds": preds, "truth": truth_sample}
 
-
     # Validation Step
     def validation_step(self, batch, batch_idx):
 
@@ -249,14 +234,12 @@ class GNNBase(LightningModule):
 
         return outputs["loss"]
 
-
     # Test Step
     def test_step(self, batch, batch_idx):
 
         outputs = self.shared_evaluation(batch, batch_idx, log=False)
 
         return outputs
-
 
     # Optimizer Step
     def optimizer_step(

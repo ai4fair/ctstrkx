@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# TODO: gnn_base.py (a.k.a v1.1) is exactly the same as gnn_base_v1.py, only difference 
-# is how to fetch data from "feature_store". Here, "split_datasets" do the heavy work.
+# NOTE: gnn_base is exactly same as gnn_base_v1 except for setup()
 
 import os
 import torch
@@ -40,7 +39,7 @@ class GNNBase(pl.LightningModule):
         # Instance Variables
         self.trainset, self.valset, self.testset = None, None, None
 
-    def setup(self, stage):
+    def setup(self, stage="fit"):
         if self.trainset is None:
             self.trainset, self.valset, self.testset = split_datasets(**self.hparams)
 

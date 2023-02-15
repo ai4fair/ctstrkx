@@ -60,8 +60,17 @@
 lightning_logs
 __pycache__
 
+*.sif
+logs
+data
 data_sets
-train_*
+train_quick
+train_all
 run_*
-run*
+run
+lightning_logs
+lightning_models
+tutorials
 gnn4itk
+ray_tune
+
