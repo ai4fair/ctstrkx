@@ -1,23 +1,22 @@
 # I/O Configuration
-input_dir: ${EXATRKX_DATA}/train_all
+input_dir: ${EXATRKX_DATA}/train_quick
 output_dir: ${EXATRKX_DATA}/run_quick/feature_store
 
 n_files: 10000
 n_workers: 8
 n_tasks: 1
 overwrite: True
-min_pt: 0                   # 0: no filter, 0.05: remove lower than 50 MeV
-
 chunksize: 1
 
-noise: False
-skewed: False
-layerwise: True             # True Edge List
-modulewise: True            # True Edge List
-inputedges: True            # Input Edge List
-filtering: True             # Input Graphs in adjacent (all) sectors --> true (false) 
+noise: False                # handle noise hits
+skewed: False               # add/remove skewed layers
+layerwise: True             # get layerwise true edges
+modulewise: True            # get modulewise true edges
+inputedges: True            # get input edges (using layerwise as truth)
+filtering: False            # get input edges with (false)/without(true) adjacent sectors
 
-cell_info: True
+min_pt: 0                   # 0: no filter, 0.05: remove lower than 50 MeV
+cell_info: True             # e.g. isochrone
 
 # if inputedges=True:
 # then 'edge_index' will be built in the Processing stage, so one can use GNN stage right after that i.e. skipping Embedding & Filtering
