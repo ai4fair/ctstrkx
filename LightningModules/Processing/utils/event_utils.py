@@ -91,6 +91,15 @@ def get_modulewise_edges(hits):
     return true_edges
 
 
+def get_vlids(hits):
+    """Get list of  tuple=(volume_id, layer_id) from Hits"""
+    # Get a list of unique and sorted tuple=(volume_id, layer_id)
+    vlids = hits[['volume_id', 'layer_id']].drop_duplicates()
+    vlids = vlids.sort_values(['volume_id', 'layer_id'], ascending=[True, True])
+    vlids = list(zip(vlids.volume_id, vlids.layer_id))
+    return vlids
+
+
 def select_hits(event_prefix=None, skewed=False, noise=False, min_pt=None):
     """Hit selection, merge info into a single dataframe"""
     
@@ -115,25 +124,26 @@ def select_hits(event_prefix=None, skewed=False, noise=False, min_pt=None):
         truth = truth[truth.pt > min_pt]
 
     # ADAK: Start
-
+    # ------------------------------------------------------------------------------------
+    
     # Need 'isochrone', 'skewed' & 'sector_id' columns from 'tubes'
     hits = hits.merge(tubes[["hit_id", "isochrone", "skewed", "sector_id"]], on="hit_id")
 
-    # Handle Skewed Layers
+    # Filter STT Layers: Non-skewed: 0, Skewed: 1
     if skewed is False:
-       
-        # filter
-        hits = hits.query('skewed==0')
-        
-        # reassign layer_ids from 0,1,2...,17
-        vlids = hits.layer_id.unique()
-        n_det_layers = hits.layer_id.unique().shape[0]
-        vlid_groups = hits.groupby(['layer_id'])
-        hits = pd.concat([vlid_groups.get_group(vlids[i]).assign(layer=i) for i in range(n_det_layers)])
-    else:
-        hits = hits.rename(columns={"layer_id": "layer"})
+        hits = hits.query('skewed!=1')
+    
+    vlids = get_vlids(hits)
+    n_det_layers = len(vlids)
+    
+    # Select layers and assign convenient layer number [0...n_det_layers]
+    vlid_groups = hits.groupby(["volume_id", "layer_id"])
+    hits = pd.concat(
+        [vlid_groups.get_group(vlids[i]).assign(layer_id=i) for i in range(n_det_layers)]
+    ) # FIXME: index column is jumbbled up, maybe reset_index is needed.
     
     # ADAK: End
+    # ------------------------------------------------------------------------------------
     
     # Calculate derived hits variables
     r = np.sqrt(hits.x**2 + hits.y**2)
@@ -159,7 +169,7 @@ def build_event(event_prefix, feature_scale, layerwise=True, modulewise=True,
     )
     
     # Get list of all layers
-    layers = hits.layer.to_numpy()
+    layers = hits.layer_id.to_numpy()
 
     # Handle which truth graph(s) are being produced
     modulewise_true_edges, layerwise_true_edges = None, None
