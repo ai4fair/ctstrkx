@@ -2,8 +2,15 @@
 # coding: utf-8
 import os
 import glob
+import logging
 import pandas as pd
-import dask.dataframe as dd
+
+try:
+    import dask.dataframe as dd
+except ImportError:
+    logging.warning("Dask is not found")
+    
+
 
 
 # Preprocessing Tasks
@@ -53,16 +60,16 @@ def pandas_events(input_dir="None"):
     
     # map(function, iterable) == map(pd.read_csv, files) where variable
     # the 'files = glob.glob(os.path.join(input_dir+"*-hits.csv"))' is a list
-    hits = pd.concat(map(pd.read_csv, glob.glob(os.path.join(input_dir + "*-hits.csv"))))
-    cells = pd.concat(map(pd.read_csv, glob.glob(os.path.join(input_dir + "*-cells.csv"))))
-    particles = pd.concat(map(pd.read_csv, glob.glob(os.path.join(input_dir + "*-particles.csv"))))
-    truth = pd.concat(map(pd.read_csv, glob.glob(os.path.join(input_dir + "*-truth.csv"))))
+    hits = pd.concat(map(pd.read_csv, glob.glob(os.path.join(input_dir,"*-hits.csv"))))
+    cells = pd.concat(map(pd.read_csv, glob.glob(os.path.join(input_dir,"*-cells.csv"))))
+    particles = pd.concat(map(pd.read_csv, glob.glob(os.path.join(input_dir,"*-particles.csv"))))
+    truth = pd.concat(map(pd.read_csv, glob.glob(os.path.join(input_dir,"*-truth.csv"))))
 
     return hits, cells, particles, truth
 
 
 # Load all events using Dask
-def dask_events(input_dir="None"):
+def dask_events(input_dir="None", to_panda=False):
     """Load multiple CSV files using Dask"""
     
     # load multiple CSVs at once
@@ -71,11 +78,12 @@ def dask_events(input_dir="None"):
     particles = dd.read_csv(input_dir + "*-particles.csv")
     truth = dd.read_csv(input_dir + "*-truth.csv")
     
-    # convert to pandas format, if required.
-    # hits = hits.compute()
-    # truth = truth.compute()
-    # particles = particles.compute()
-    # tubes = tubes.compute()
+    # convert to pandas format
+    if to_panda:
+        hits = hits.compute()
+        truth = truth.compute()
+        particles = particles.compute()
+        tubes = tubes.compute()
     
     return hits, cells, particles, truth
     

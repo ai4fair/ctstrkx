@@ -1,6 +1,6 @@
-## Running CTD2022 Pipeline
+## CTS Pipeline
 
-This code uses the Exa.TrkX pipeline as a baseline. It uses the `traintrack` to run different stages (_**Processing**_ and _**GNN**_) of the pipeline.
+This code uses the _**Exa.TrkX**_ pipeline as a baseline. It uses the `traintrack` to run different stages (_**Processing**_ and _**GNN**_) of the pipeline. This pipeline is intended for **Central Tracking System (CTS)** of **PANDA experiment**. CTS is heterogenous detector setup that include MVD, GEM and STT detectors for particle tracking in the Target Spectrometer of PANDA experiment.
 
 &nbsp;
 
