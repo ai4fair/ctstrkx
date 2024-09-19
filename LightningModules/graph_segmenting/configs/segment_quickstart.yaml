@@ -1,0 +1,10 @@
+input_dir: ${EXATRKX_DATA}/run_quick/graph_labelling/test
+output_dir: ${EXATRKX_DATA}/run_quick/graph_segmenting
+datatype_names: [[train, val, test]]
+
+edge_cut: 0.5
+n_tasks: 1
+n_files: 500
+n_workers: 1
+
+seg_method: ccl        # options >> ccl, dbscan, wrangler
